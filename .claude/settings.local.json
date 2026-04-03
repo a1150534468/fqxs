@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.cnblogs.com)",
+      "WebSearch",
+      "WebFetch(domain:addyosmani.com)",
+      "WebFetch(domain:www.turingcollege.com)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
