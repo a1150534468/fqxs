@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -73,3 +74,20 @@ class UserAuthAPITest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
+
+
+class CreateAdminCommandTest(TestCase):
+    def test_create_admin_command_creates_superuser(self):
+        call_command('create_admin')
+
+        admin_user = User.objects.get(username='admin')
+        self.assertEqual(admin_user.email, 'admin@example.com')
+        self.assertTrue(admin_user.is_superuser)
+        self.assertTrue(admin_user.is_staff)
+        self.assertTrue(admin_user.check_password('admin123'))
+
+    def test_create_admin_command_is_idempotent(self):
+        call_command('create_admin')
+        call_command('create_admin')
+
+        self.assertEqual(User.objects.filter(username='admin').count(), 1)
