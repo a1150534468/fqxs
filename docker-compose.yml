@@ -30,5 +30,21 @@ services:
       timeout: 3s
       retries: 5
 
+  django:
+    build: ./backend
+    container_name: fqxs_django
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   mysql_data:
