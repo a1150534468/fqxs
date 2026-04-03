@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
@@ -30,6 +31,8 @@ INSTALLED_APPS = [
     'apps.tasks',
     'apps.stats',
 ]
+
+AUTH_USER_MODEL = 'users.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -76,6 +79,12 @@ DATABASES = {
         },
     }
 }
+
+if 'pytest' in sys.modules:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',
+    }
 
 # Redis
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
