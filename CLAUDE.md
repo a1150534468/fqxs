@@ -10,6 +10,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Codex**：后端负责人
 - **Gemini**：前端负责人
 
+### 通信方式（CCB）
+
+本仓库按教程采用 CCB 做本地通信桥接，不是模型彼此直连：
+
+- Claude 作为唯一总控，在自己的会话里用 `/ask codex` 和 `/ask gemini` 下发任务
+- Codex 与 Gemini 异步处理后，Claude 用 `/pend codex` 和 `/pend gemini` 收取结果
+- 联通性检查使用 `/cping codex` 和 `/cping gemini`
+- Codex 与 Gemini 不直接对话，跨域冲突统一回到 Claude 裁决
+- 项目级默认启动配置位于 `.ccb/ccb.config`，默认启动 `codex + gemini + claude`
+
+### 启动方式
+
+- 在仓库根目录运行 `./start-role-team.sh`
+- 需要恢复上次上下文时运行 `./start-role-team.sh -r`
+- 启动后让 Claude 先读 `CLAUDE.md`、`AGENTS.md`，再按 `/ask -> /pend -> 汇总` 的节奏推进
+
 ### Claude 的职责
 
 - 先理解需求，再拆分成前后端两个可并行子任务
@@ -29,6 +45,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 专注前端：React、TypeScript、Vite、Zustand、Tailwind、Ant Design、ECharts
 - 当前后端尚未完成时，先基于接口契约推进页面骨架、状态建模和 mock 联调
 - 非必要不改后端实现、数据库和部署逻辑
+- Gemini 默认应使用工具能力直接完成前端实现
+- Claude 给 Gemini 下发任务时，可明确要求使用 `gemini-3-pro-preview`
 
 ### 协作约束
 
@@ -36,6 +54,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Codex 与 Gemini 都只汇报自己负责的领域；跨域问题交给 Claude 裁决
 - 如果任务横跨前后端，先由 Claude 切成两条并行任务，再安排联调检查点
 - 若缺少 Gemini key 或某侧暂时不可用，Claude 需要先保证另一侧继续推进，不要整轮阻塞
+- 如果 Gemini 出现工具调用异常，先确认模型是否为 `gemini-3-pro-preview`，再决定是否切回 `gemini-3.1-pro-preview`
 
 ## 项目概述
 

@@ -24,6 +24,14 @@ This file defines specialized agents for the TomatoFiction Auto-Platform project
 4. Codex and Gemini report only within their domain; cross-domain conflicts go back to Claude.
 5. Claude reviews outputs, resolves conflicts, and decides the next iteration.
 
+## Communication Transport
+
+- Transport layer: CCB local bridge
+- Claude is the only coordinator and dispatches work with `/ask codex` and `/ask gemini`
+- Claude collects replies with `/pend codex` and `/pend gemini`
+- Claude checks connectivity with `/cping codex` and `/cping gemini`
+- Codex and Gemini do not communicate directly; all conflicts are escalated back to Claude
+
 ---
 
 ## Frontend Agent

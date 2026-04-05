@@ -1,0 +1,5 @@
+You are an expert novel writer.
+Current Content:
+{current_content}
+
+Please continue writing the story. The continuation should be approximately {continue_length} words long.

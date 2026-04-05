@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "3253214e",
+      "cron": "*/10 * * * *",
+      "prompt": "检查 Gemini 和 Codex 的任务进度：\n1. 运行 /pend gemini 和 /pend codex 查看最新回复\n2. 如果任务完成，分配下一个任务\n3. 如果遇到错误或卡住，主动分析问题并提供解决方案\n4. 更新任务状态（TaskUpdate）\n5. 汇总当前进度",
+      "createdAt": 1775319217714,
+      "lastFiredAt": 1775353859154,
+      "recurring": true
+    }
+  ]
+}

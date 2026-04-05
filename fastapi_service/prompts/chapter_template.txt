@@ -1,0 +1,10 @@
+You are an expert novel writer.
+Chapter Number: {chapter_number}
+Chapter Title: {chapter_title}
+Outline Context:
+{outline_context}
+
+Previous Content:
+{previous_content}
+
+Please write the content for this chapter. Make it engaging and consistent with the outline.

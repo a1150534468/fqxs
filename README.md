@@ -66,6 +66,24 @@ cd backend
 
 The Django API is exposed at `http://localhost:8000`.
 
+## AI Collaboration
+
+This repository uses Claude as planner, Codex as backend agent, and Gemini as frontend agent.
+
+Quick start:
+
+```bash
+./start-role-team.sh
+```
+
+Resume the previous collaboration context:
+
+```bash
+./start-role-team.sh -r
+```
+
+Collaboration details and the CCB communication flow are documented in [docs/collaboration.md](/Users/z/code/fqxs/docs/collaboration.md).
+
 ## Development Guide
 
 ### Backend setup

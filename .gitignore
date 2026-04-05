@@ -30,3 +30,7 @@ Thumbs.db
 
 # Docker
 *.pid
+
+# CCB collaboration
+.ccb/*
+!.ccb/ccb.config

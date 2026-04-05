@@ -1,8 +1,10 @@
 import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
 from datetime import timedelta
+
+from celery.schedules import crontab
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -21,6 +23,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
     'apps.users',
@@ -36,6 +39,7 @@ AUTH_USER_MODEL = 'users.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -88,6 +92,7 @@ if 'pytest' in sys.modules:
 
 # Redis
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+FASTAPI_URL = os.getenv('FASTAPI_URL', 'http://localhost:8001')
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -125,6 +130,13 @@ REST_FRAMEWORK = {
     ),
 }
 
+# CORS Settings
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+]
+CORS_ALLOW_CREDENTIALS = True
+
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
@@ -138,4 +150,30 @@ SIMPLE_JWT = {
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Shanghai'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_IMPORTS = (
+    'celery_tasks.ai_tasks',
+    'celery_tasks.crawl_tasks',
+    'celery_tasks.stats_tasks',
+)
+CELERY_BEAT_SCHEDULE = {
+    'crawl-inspirations-daily': {
+        'task': 'celery_tasks.crawl_tasks.crawl_inspirations_task',
+        'schedule': crontab(hour=2, minute=0),
+        'args': (50,),
+    },
+    'update-stats-hourly': {
+        'task': 'celery_tasks.stats_tasks.update_daily_stats',
+        'schedule': crontab(minute=0),
+    },
 }

@@ -40,6 +40,7 @@ class Chapter(models.Model):
     read_count = models.IntegerField(default=0, verbose_name='阅读量')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    is_deleted = models.BooleanField(default=False, verbose_name='是否删除')
 
     class Meta:
         db_table = 'chapter'

@@ -1,0 +1,6 @@
+You are an expert novel outliner.
+Genre: {genre}
+Target Chapters: {target_chapters}
+User Preferences: {user_preferences}
+
+Please generate a comprehensive outline for the novel based on the provided parameters.
