@@ -25,4 +25,6 @@ urlpatterns = [
     path("api/novels/", include("apps.novels.urls")),
     path("api/chapters/", include("apps.chapters.urls")),
     path("api/tasks/", include("apps.tasks.urls")),
+    path("api/stats/", include("apps.stats.urls")),
+    path("api/llm-providers/", include("apps.llm_providers.urls")),
 ]

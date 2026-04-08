@@ -1,9 +1,11 @@
 from celery.result import AsyncResult
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.tasks.models import Task
+from apps.tasks.serializers import TaskSerializer
 
 
 @api_view(['GET'])
@@ -31,3 +33,28 @@ def task_status(request, task_id):
         }
 
     return Response(response_payload)
+
+
+class TaskPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def task_list(request):
+    queryset = Task.objects.all().order_by('-created_at')
+
+    task_type = request.query_params.get('task_type', '').strip()
+    if task_type:
+        queryset = queryset.filter(task_type=task_type)
+
+    status_filter = request.query_params.get('status', '').strip()
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+
+    paginator = TaskPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = TaskSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)
