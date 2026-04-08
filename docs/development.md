@@ -13,6 +13,7 @@
 | Phase 3 | 前端页面与联调 | 2026-04-04 | 完成 |
 | Phase 4 | 爬虫 + Celery + FastAPI | 2026-04-04 夜间 | 完成 |
 | Phase 5 | CCB 清理 + Agent Team 迁移 | 2026-04-07 | 完成 |
+| Phase 6 | 日志监控 + 备份恢复 | 2026-04-08 | 完成 |
 
 ---
 
@@ -155,6 +156,45 @@
 
 ### 移除的定时任务
 - 删除每 10 分钟检查 Gemini/Codex 进度的 cron job
+
+---
+
+## Phase 6: 日志监控 + 备份恢复（2026-04-08）
+
+### 日志系统
+- 结构化日志配置（verbose、simple、json 格式）
+- 日志文件轮转（10MB，保留 5 个备份）
+- 分类日志：django.log、error.log、celery.log、app.json.log
+- 请求日志中间件（记录请求时间、状态码、用户、IP）
+- 性能监控装饰器（log_execution_time、log_celery_task）
+- PerformanceMonitor 上下文管理器
+
+### 监控系统
+- 健康检查端点（`/api/health/`）
+  - 数据库连接检查
+  - Redis 连接检查
+  - FastAPI 服务检查
+- 系统监控脚本（`scripts/health_check.py`）
+- Sentry 错误追踪集成（可选）
+
+### LLM Provider 管理增强
+- 连接测试端点（`POST /api/llm-providers/{id}/test_connection/`）
+- 优先级设置端点（`POST /api/llm-providers/{id}/set_priority/`）
+- 详细日志记录
+
+### 备份恢复系统
+- 数据库备份脚本（`scripts/backup_db.sh`）
+  - 自动压缩（gzip）
+  - 自动清理旧备份（默认保留 7 天）
+  - 支持环境变量配置
+- 数据库恢复脚本（`scripts/restore_db.sh`）
+  - 交互式确认
+  - 自动解压
+- 备份恢复文档（`docs/backup_recovery.md`）
+
+### 依赖更新
+- python-json-logger==2.0.7（JSON 格式日志）
+- sentry-sdk==2.0.0（错误追踪）
 
 ---
 
