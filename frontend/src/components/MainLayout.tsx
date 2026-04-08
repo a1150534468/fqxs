@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Layout, Menu, Button, Dropdown, theme } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { 
-  LayoutDashboard, 
-  Lightbulb, 
-  BookOpen, 
-  Menu as MenuIcon, 
-  LogOut, 
-  User as UserIcon 
+import {
+  LayoutDashboard,
+  Lightbulb,
+  BookOpen,
+  Menu as MenuIcon,
+  LogOut,
+  User as UserIcon,
+  Cpu
 } from 'lucide-react';
 
 const { Header, Sider, Content } = Layout;
@@ -40,6 +41,11 @@ export const MainLayout: React.FC = () => {
       key: '/novels',
       icon: <BookOpen size={18} />,
       label: '项目管理',
+    },
+    {
+      key: '/llm-providers',
+      icon: <Cpu size={18} />,
+      label: 'LLM 配置',
     },
   ];
 

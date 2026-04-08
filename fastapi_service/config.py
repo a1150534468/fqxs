@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     llm_api_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-3.5-turbo"
+    django_api_url: str = "http://localhost:8000"
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:8000",

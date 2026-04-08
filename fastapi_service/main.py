@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from routers.ai_generate import router as ai_router
+from services.llm_provider_manager import llm_provider_manager
 
 app = FastAPI(
     title=settings.app_name,
@@ -17,6 +18,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize provider manager
+llm_provider_manager.set_django_api_url(settings.django_api_url)
 
 app.include_router(ai_router)
 

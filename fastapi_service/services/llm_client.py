@@ -2,10 +2,12 @@ import asyncio
 import itertools
 import json
 import re
+from typing import Optional
 
 import httpx
 
 from config import settings
+from services.llm_provider_manager import llm_provider_manager
 
 NON_WHITESPACE_PATTERN = re.compile(r"\S")
 
@@ -34,6 +36,7 @@ class LLMClient:
 
     def __init__(self):
         self._use_mock = settings.mock_generation or not settings.llm_api_key
+        self._user_token: Optional[str] = None
 
         self._opening_lines = [
             "晨雾压在城墙上，远处传来缓慢而沉重的钟声。",
@@ -57,6 +60,10 @@ class LLMClient:
     # ------------------------------------------------------------------
     # Public API methods
     # ------------------------------------------------------------------
+
+    def set_user_token(self, token: str):
+        """Set user JWT token for fetching provider configurations."""
+        self._user_token = token
 
     async def generate_outline(self, inspiration_id: int, genre: str, target_chapters: int):
         if self._use_mock:
@@ -125,6 +132,27 @@ class LLMClient:
         return content, self._count_words(content)
 
     async def _call_llm(self, system_message: str, user_message: str) -> str:
+        """Call LLM using provider manager or fallback to default settings."""
+        # Try to use provider manager if user token is available
+        if self._user_token and settings.django_api_url:
+            try:
+                providers = await llm_provider_manager.fetch_providers_from_django(
+                    self._user_token, task_type='chapter'
+                )
+                if providers:
+                    return await llm_provider_manager.call_llm(
+                        system_message=system_message,
+                        user_message=user_message,
+                        providers=providers,
+                        temperature=0.8,
+                        max_tokens=4096,
+                    )
+            except Exception as e:
+                # Log error but continue to fallback
+                import logging
+                logging.getLogger(__name__).warning(f'Provider manager failed, using default: {e}')
+
+        # Fallback to default settings
         url = f"{settings.llm_api_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {settings.llm_api_key}",
