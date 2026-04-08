@@ -8,6 +8,8 @@ const LLMProviders: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTested, setConnectionTested] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -31,6 +33,7 @@ const LLMProviders: React.FC = () => {
 
   const handleCreate = () => {
     setEditingProvider(null);
+    setConnectionTested(false);
     form.resetFields();
     form.setFieldsValue({
       is_active: true,
@@ -43,6 +46,7 @@ const LLMProviders: React.FC = () => {
 
   const handleEdit = (provider: LLMProvider) => {
     setEditingProvider(provider);
+    setConnectionTested(true); // 编辑时不需要重新测试
     form.setFieldsValue({
       name: provider.name,
       provider_type: provider.provider_type,
@@ -70,16 +74,60 @@ const LLMProviders: React.FC = () => {
     });
   };
 
+  const handleTestConnectionInModal = async () => {
+    try {
+      // 先验证必填字段
+      await form.validateFields(['name', 'provider_type', 'api_url', 'api_key', 'task_type']);
+
+      setTestingConnection(true);
+      const values = form.getFieldsValue();
+
+      // 创建临时 Provider 用于测试
+      const tempProvider = await llmProviderApi.create({
+        ...values,
+        is_active: false, // 临时创建，先设为不启用
+      } as LLMProviderCreate);
+
+      // 测试连接
+      const response = await llmProviderApi.testConnection(tempProvider.data.id);
+
+      if (response.data.status === 'success') {
+        message.success('连接测试成功！可以保存配置了');
+        setConnectionTested(true);
+        // 删除临时 Provider
+        await llmProviderApi.delete(tempProvider.data.id);
+      } else {
+        message.error(response.data.message || '连接测试失败');
+        // 删除临时 Provider
+        await llmProviderApi.delete(tempProvider.data.id);
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '连接测试失败，请检查配置');
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const handleTestConnection = async (id: number) => {
     try {
-      await llmProviderApi.testConnection(id);
-      message.success('连接测试成功');
+      const response = await llmProviderApi.testConnection(id);
+      if (response.data.status === 'success') {
+        message.success('连接测试成功');
+      } else {
+        message.error(response.data.message || '连接测试失败');
+      }
     } catch (error: any) {
       message.error(error.response?.data?.message || '连接测试失败');
     }
   };
 
   const handleSubmit = async () => {
+    // 新建时必须先测试连接
+    if (!editingProvider && !connectionTested) {
+      message.warning('请先测试连接，确保配置正确后再保存');
+      return;
+    }
+
     try {
       const values = await form.validateFields();
       if (editingProvider) {
@@ -90,6 +138,7 @@ const LLMProviders: React.FC = () => {
         message.success('创建成功');
       }
       setModalVisible(false);
+      setConnectionTested(false);
       fetchProviders();
     } catch (error) {
       message.error('操作失败');
@@ -210,8 +259,13 @@ const LLMProviders: React.FC = () => {
         title={editingProvider ? '编辑 LLM Provider' : '添加 LLM Provider'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setConnectionTested(false);
+        }}
         width={600}
+        okText={editingProvider ? '保存' : (connectionTested ? '保存' : '请先测试连接')}
+        okButtonProps={{ disabled: !editingProvider && !connectionTested }}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -273,6 +327,25 @@ const LLMProviders: React.FC = () => {
           <Form.Item name="is_active" label="启用" valuePropName="checked">
             <Switch />
           </Form.Item>
+
+          {!editingProvider && (
+            <Form.Item>
+              <Button
+                type="dashed"
+                block
+                icon={<ApiOutlined />}
+                loading={testingConnection}
+                onClick={handleTestConnectionInModal}
+              >
+                {connectionTested ? '✓ 连接测试成功' : '测试连接'}
+              </Button>
+              {!connectionTested && (
+                <div style={{ marginTop: '8px', color: '#ff4d4f', fontSize: '12px' }}>
+                  * 新建 Provider 必须先测试连接成功后才能保存
+                </div>
+              )}
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>
