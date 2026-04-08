@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { request } from '../utils/request';
 
 export interface LLMProvider {
   id: number;
@@ -26,20 +24,33 @@ export interface LLMProviderCreate {
 }
 
 export const llmProviderApi = {
-  list: () => axios.get<LLMProvider[]>(`${API_BASE_URL}/llm-providers/`),
+  list: async () => {
+    const response = await request.get<LLMProvider[]>('/llm-providers/');
+    return response;
+  },
 
-  create: (data: LLMProviderCreate) =>
-    axios.post<LLMProvider>(`${API_BASE_URL}/llm-providers/`, data),
+  create: async (data: LLMProviderCreate) => {
+    const response = await request.post<LLMProvider>('/llm-providers/', data);
+    return response;
+  },
 
-  update: (id: number, data: Partial<LLMProviderCreate>) =>
-    axios.patch<LLMProvider>(`${API_BASE_URL}/llm-providers/${id}/`, data),
+  update: async (id: number, data: Partial<LLMProviderCreate>) => {
+    const response = await request.patch<LLMProvider>(`/llm-providers/${id}/`, data);
+    return response;
+  },
 
-  delete: (id: number) =>
-    axios.delete(`${API_BASE_URL}/llm-providers/${id}/`),
+  delete: async (id: number) => {
+    const response = await request.delete(`/llm-providers/${id}/`);
+    return response;
+  },
 
-  testConnection: (id: number) =>
-    axios.post(`${API_BASE_URL}/llm-providers/${id}/test_connection/`),
+  testConnection: async (id: number) => {
+    const response = await request.post(`/llm-providers/${id}/test_connection/`);
+    return response;
+  },
 
-  setPriority: (id: number, priority: number) =>
-    axios.post(`${API_BASE_URL}/llm-providers/${id}/set_priority/`, { priority }),
+  setPriority: async (id: number, priority: number) => {
+    const response = await request.post(`/llm-providers/${id}/set_priority/`, { priority });
+    return response;
+  },
 };
