@@ -33,6 +33,14 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
         """Test LLM provider connection."""
         provider = self.get_object()
 
+        # 根据 provider_type 选择合适的测试模型
+        model_map = {
+            'openai': 'gpt-3.5-turbo',
+            'tongyi': 'qwen-turbo',  # 通义千问的模型
+            'custom': 'gpt-3.5-turbo',  # 默认使用 OpenAI 格式
+        }
+        test_model = model_map.get(provider.provider_type, 'gpt-3.5-turbo')
+
         try:
             response = requests.post(
                 f"{provider.api_url.rstrip('/')}/chat/completions",
@@ -41,7 +49,7 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
                     'Content-Type': 'application/json',
                 },
                 json={
-                    'model': 'gpt-3.5-turbo',
+                    'model': test_model,
                     'messages': [{'role': 'user', 'content': 'test'}],
                     'max_tokens': 5,
                 },
@@ -56,11 +64,30 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
                 })
             else:
                 logger.warning(f'LLM provider {provider.name} connection test failed: {response.status_code}')
+                # 返回更详细的错误信息
+                try:
+                    error_detail = response.json()
+                    error_message = error_detail.get('error', {}).get('message', response.text)
+                except:
+                    error_message = response.text[:200] if response.text else f'HTTP {response.status_code}'
+
                 return Response({
                     'status': 'error',
-                    'message': f'Connection failed with status {response.status_code}',
+                    'message': f'Connection failed: {error_message}',
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+        except requests.exceptions.Timeout:
+            logger.error(f'LLM provider {provider.name} connection test timeout')
+            return Response({
+                'status': 'error',
+                'message': 'Connection timeout - please check API URL and network',
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except requests.exceptions.RequestException as e:
+            logger.error(f'LLM provider {provider.name} connection test error: {e}')
+            return Response({
+                'status': 'error',
+                'message': f'Connection error: {str(e)}',
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f'LLM provider {provider.name} connection test error: {e}')
             return Response({
