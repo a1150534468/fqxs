@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'apps.chapters',
     'apps.tasks',
     'apps.stats',
+    'apps.publishing',
 ]
 
 AUTH_USER_MODEL = 'users.User'
