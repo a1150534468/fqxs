@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any
 
@@ -9,7 +10,9 @@ from django.utils import timezone
 from apps.chapters.models import Chapter
 from apps.novels.models import NovelProject
 from apps.tasks.models import Task
+from utils.monitoring import log_celery_task
 
+logger = logging.getLogger('celery_tasks')
 NON_WHITESPACE_PATTERN = re.compile(r'\S')
 
 
@@ -26,8 +29,10 @@ def _update_task(task_record_id: int | None, **fields: Any) -> None:
 
 
 @shared_task(bind=True, max_retries=3)
+@log_celery_task
 def generate_chapter_async(self, project_id, chapter_number, chapter_title, task_record_id=None):
     """Generate chapter content asynchronously via FastAPI AI service."""
+    logger.info(f'Starting chapter generation: project={project_id}, chapter={chapter_number}')
     _update_task(
         task_record_id,
         status='running',
@@ -70,6 +75,7 @@ def generate_chapter_async(self, project_id, chapter_number, chapter_title, task
             'chapter_id': chapter.id,
             'created': created,
         }
+        logger.info(f'Chapter generation completed: chapter_id={chapter.id}, created={created}')
         _update_task(
             task_record_id,
             status='success',
@@ -80,6 +86,7 @@ def generate_chapter_async(self, project_id, chapter_number, chapter_title, task
         return result
     except Exception as exc:
         retry_count = int(self.request.retries) + 1
+        logger.error(f'Chapter generation failed: {exc}', exc_info=True)
         _update_task(
             task_record_id,
             status='retry',
@@ -89,6 +96,7 @@ def generate_chapter_async(self, project_id, chapter_number, chapter_title, task
         try:
             raise self.retry(exc=exc, countdown=60)
         except self.MaxRetriesExceededError:
+            logger.error(f'Chapter generation max retries exceeded: {exc}')
             _update_task(
                 task_record_id,
                 status='failed',

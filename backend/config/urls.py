@@ -27,4 +27,5 @@ urlpatterns = [
     path("api/tasks/", include("apps.tasks.urls")),
     path("api/stats/", include("apps.stats.urls")),
     path("api/llm-providers/", include("apps.llm_providers.urls")),
+    path("api/", include("apps.monitoring.urls")),
 ]
