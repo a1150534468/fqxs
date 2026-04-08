@@ -1,5 +1,6 @@
 from django.db import models
 from apps.chapters.models import Chapter
+from utils.encryption import encrypt_text, decrypt_text
 
 
 class PublishConfig(models.Model):
@@ -7,7 +8,7 @@ class PublishConfig(models.Model):
 
     user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='publish_configs')
     platform_username = models.CharField(max_length=100, verbose_name='平台用户名')
-    platform_password = models.CharField(max_length=255, verbose_name='平台密码（加密）')
+    _platform_password_encrypted = models.TextField(verbose_name='平台密码（加密）', db_column='platform_password', default='')
     novel_id = models.CharField(max_length=100, verbose_name='小说ID', help_text='番茄小说平台的小说ID')
     project = models.ForeignKey('novels.NovelProject', on_delete=models.CASCADE, related_name='publish_configs')
     is_active = models.BooleanField(default=True, verbose_name='启用')
@@ -23,6 +24,21 @@ class PublishConfig(models.Model):
 
     def __str__(self):
         return f'{self.user.username} - {self.project.title}'
+
+    @property
+    def platform_password(self) -> str:
+        """Decrypt and return password."""
+        if not self._platform_password_encrypted:
+            return ''
+        return decrypt_text(self._platform_password_encrypted)
+
+    @platform_password.setter
+    def platform_password(self, value: str):
+        """Encrypt and store password."""
+        if value:
+            self._platform_password_encrypted = encrypt_text(value)
+        else:
+            self._platform_password_encrypted = ''
 
     def get_proxy_list(self) -> list:
         """Parse proxy list from text field."""

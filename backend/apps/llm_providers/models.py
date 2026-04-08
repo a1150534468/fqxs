@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from utils.encryption import encrypt_text, decrypt_text
 
 
 class LLMProvider(models.Model):
@@ -7,13 +8,14 @@ class LLMProvider(models.Model):
 
     PROVIDER_TYPES = [
         ('openai', 'OpenAI'),
-        ('qwen', '通义千问'),
+        ('tongyi', '通义千问'),
         ('custom', '自定义'),
     ]
 
     TASK_TYPES = [
-        ('idea_generation', '创意生成'),
-        ('chapter_writing', '章节写作'),
+        ('outline', '大纲生成'),
+        ('chapter', '章节生成'),
+        ('continue', '内容续写'),
     ]
 
     user = models.ForeignKey(
@@ -25,7 +27,7 @@ class LLMProvider(models.Model):
     name = models.CharField(max_length=100, verbose_name='服务名称')
     provider_type = models.CharField(max_length=20, choices=PROVIDER_TYPES, verbose_name='服务类型')
     api_url = models.URLField(max_length=255, verbose_name='API 地址')
-    api_key = models.CharField(max_length=255, verbose_name='API Key')
+    _api_key_encrypted = models.TextField(verbose_name='API Key (加密)', db_column='api_key', default='')
     task_type = models.CharField(max_length=20, choices=TASK_TYPES, verbose_name='任务类型')
     is_active = models.BooleanField(default=True, verbose_name='是否启用')
     priority = models.IntegerField(default=0, verbose_name='优先级')
@@ -43,3 +45,18 @@ class LLMProvider(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.provider_type})'
+
+    @property
+    def api_key(self) -> str:
+        """Decrypt and return API key."""
+        if not self._api_key_encrypted:
+            return ''
+        return decrypt_text(self._api_key_encrypted)
+
+    @api_key.setter
+    def api_key(self, value: str):
+        """Encrypt and store API key."""
+        if value:
+            self._api_key_encrypted = encrypt_text(value)
+        else:
+            self._api_key_encrypted = ''
