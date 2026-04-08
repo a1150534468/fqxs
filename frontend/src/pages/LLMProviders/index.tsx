@@ -18,9 +18,12 @@ const LLMProviders: React.FC = () => {
     setLoading(true);
     try {
       const response = await llmProviderApi.list();
-      setProviders(response.data);
+      // Django REST Framework pagination returns {count, next, previous, results}
+      const data = response.data.results || response.data;
+      setProviders(Array.isArray(data) ? data : []);
     } catch (error) {
       message.error('获取 LLM Provider 列表失败');
+      console.error('Failed to fetch providers:', error);
     } finally {
       setLoading(false);
     }
