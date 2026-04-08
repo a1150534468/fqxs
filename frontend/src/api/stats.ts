@@ -51,6 +51,9 @@ export interface TrendDataPoint {
 export interface PieDataPoint {
   name: string;
   value: number;
+  itemStyle?: {
+    color: string;
+  };
 }
 
 export interface RecentGeneration {

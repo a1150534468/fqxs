@@ -38,7 +38,7 @@ interface StatsState {
 }
 
 /** Derive pie chart data from dashboard generation stats */
-function deriveAiSuccessData(stats: DashboardStats): PieDataPoint[] {
+const deriveAiSuccessData = (stats: DashboardStats): PieDataPoint[] => {
   const successRate = stats.generation.success_rate;
   const needsReview = Math.round((100 - successRate) * 0.67);
   const failed = Math.round((100 - successRate) * 0.33);
@@ -91,23 +91,28 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
     set({ dashboardStatsLoading: true });
     try {
       const data = await getDashboardStats();
-      set({ dashboardStats: data });
+      set({
+        dashboardStats: data,
+        aiSuccessData: deriveAiSuccessData(data),
+      });
     } catch (error) {
       console.warn('Dashboard stats API unavailable, using fallback:', error);
       // Fallback: construct a minimal DashboardStats from userStats
       const { userStats } = get();
       if (userStats) {
-        set({
-          dashboardStats: {
-            generation: {
-              total_chapters: userStats.chapter_count,
-              success_rate: 85,
-              avg_word_count: Math.round(userStats.total_word_count / Math.max(userStats.chapter_count, 1)),
-            },
-            cost: { total_api_calls: 0, total_tokens: 0, estimated_cost: 0 },
-            performance: { avg_generation_time: 0, current_queue: 0 },
-            novels: { active_count: userStats.project_count, total_chapters_published: userStats.chapter_count },
+        const fallbackStats = {
+          generation: {
+            total_chapters: userStats.chapter_count,
+            success_rate: 85,
+            avg_word_count: Math.round(userStats.total_word_count / Math.max(userStats.chapter_count, 1)),
           },
+          cost: { total_api_calls: 0, total_tokens: 0, estimated_cost: 0 },
+          performance: { avg_generation_time: 0, current_queue: 0 },
+          novels: { active_count: userStats.project_count, total_chapters_published: userStats.chapter_count },
+        };
+        set({
+          dashboardStats: fallbackStats,
+          aiSuccessData: deriveAiSuccessData(fallbackStats),
         });
       }
     } finally {

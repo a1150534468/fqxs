@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Table, Modal, Form, Input, Select, Switch, message, Space, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { llmProviderApi, LLMProvider, LLMProviderCreate } from '../../api/llmProviders';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons';
+import { llmProviderApi, type LLMProvider, type LLMProviderCreate } from '../../api/llmProviders';
 
 const LLMProviders: React.FC = () => {
   const [providers, setProviders] = useState<LLMProvider[]>([]);
