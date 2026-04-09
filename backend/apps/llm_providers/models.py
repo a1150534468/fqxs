@@ -28,6 +28,7 @@ class LLMProvider(models.Model):
     provider_type = models.CharField(max_length=20, choices=PROVIDER_TYPES, verbose_name='服务类型')
     api_url = models.URLField(max_length=255, verbose_name='API 地址')
     _api_key_encrypted = models.TextField(verbose_name='API Key (加密)', db_column='api_key', default='')
+    model = models.CharField(max_length=100, verbose_name='模型名称', default='gpt-3.5-turbo', help_text='例如: gpt-3.5-turbo, qwen-turbo, qwen-plus')
     task_type = models.CharField(max_length=20, choices=TASK_TYPES, verbose_name='任务类型')
     is_active = models.BooleanField(default=True, verbose_name='是否启用')
     priority = models.IntegerField(default=0, verbose_name='优先级')

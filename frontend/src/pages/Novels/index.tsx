@@ -145,6 +145,16 @@ export const Novels = () => {
       ),
     },
     {
+      title: '自动生成',
+      key: 'auto_generation',
+      width: 100,
+      render: (_: any, record: any) => (
+        <Tag color={record.auto_generation_enabled ? 'green' : 'default'}>
+          {record.auto_generation_enabled ? '开启' : '关闭'}
+        </Tag>
+      ),
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
@@ -159,13 +169,22 @@ export const Novels = () => {
       width: 240,
       render: (_: any, record: any) => (
         <Space size="middle">
-          <Button type="text" size="small" className="text-purple-600" icon={<List size={16} />} onClick={() => navigate(`/novels/${record.id}/chapters`)}>
+          <Button type="text" size="small" className="text-purple-600" icon={<List size={16} />} onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/novels/${record.id}/chapters`);
+          }}>
             章节
           </Button>
-          <Button type="text" size="small" className="text-blue-600" icon={<Edit size={16} />} onClick={() => openEditModal(record)}>
+          <Button type="text" size="small" className="text-blue-600" icon={<Edit size={16} />} onClick={(e) => {
+            e.stopPropagation();
+            openEditModal(record);
+          }}>
             编辑
           </Button>
-          <Button type="text" danger size="small" icon={<Trash2 size={16} />} onClick={() => handleDelete(record.id)}>
+          <Button type="text" danger size="small" icon={<Trash2 size={16} />} onClick={(e) => {
+            e.stopPropagation();
+            handleDelete(record.id);
+          }}>
             删除
           </Button>
         </Space>
@@ -196,6 +215,10 @@ export const Novels = () => {
           }}
           onChange={handleTableChange}
           scroll={{ x: 800 }}
+          onRow={(record) => ({
+            onClick: () => navigate(`/novels/${record.id}`),
+            style: { cursor: 'pointer' }
+          })}
         />
       </Card>
 

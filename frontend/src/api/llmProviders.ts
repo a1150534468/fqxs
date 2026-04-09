@@ -6,6 +6,7 @@ export interface LLMProvider {
   provider_type: string;
   api_url: string;
   api_key_masked: string;
+  model: string;
   task_type: string;
   is_active: boolean;
   priority: number;
@@ -18,6 +19,7 @@ export interface LLMProviderCreate {
   provider_type: string;
   api_url: string;
   api_key: string;
+  model: string;
   task_type: string;
   is_active: boolean;
   priority: number;
@@ -46,6 +48,11 @@ export const llmProviderApi = {
 
   testConnection: async (id: number) => {
     const response = await request.post(`/llm-providers/${id}/test_connection/`);
+    return response;
+  },
+
+  testConnectionPreview: async (data: { api_url: string; api_key: string; model: string }) => {
+    const response = await request.post('/llm-providers/test_connection_preview/', data);
     return response;
   },
 

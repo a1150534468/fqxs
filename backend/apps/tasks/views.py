@@ -1,11 +1,48 @@
 from celery.result import AsyncResult
+from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.tasks.models import Task
 from apps.tasks.serializers import TaskSerializer
+
+
+class TaskViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only API for task monitoring."""
+
+    serializer_class = TaskSerializer
+    authentication_classes = (JWTAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get_queryset(self):
+        """Return filtered tasks."""
+        queryset = Task.objects.all().order_by('-created_at')
+
+        # Filter by task_type
+        task_type = self.request.query_params.get('task_type', '').strip()
+        if task_type:
+            queryset = queryset.filter(task_type=task_type)
+
+        # Filter by status
+        status_filter = self.request.query_params.get('status', '').strip()
+        if status_filter:
+            statuses = [s.strip() for s in status_filter.split(',') if s.strip()]
+            queryset = queryset.filter(status__in=statuses)
+
+        # Filter by related_type
+        related_type = self.request.query_params.get('related_type', '').strip()
+        if related_type:
+            queryset = queryset.filter(related_type=related_type)
+
+        # Filter by related_id
+        related_id = self.request.query_params.get('related_id', '').strip()
+        if related_id and related_id.isdigit():
+            queryset = queryset.filter(related_id=int(related_id))
+
+        return queryset
 
 
 @api_view(['GET'])

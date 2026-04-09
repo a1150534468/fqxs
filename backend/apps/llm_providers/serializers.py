@@ -16,6 +16,7 @@ class LLMProviderSerializer(serializers.ModelSerializer):
             'api_url',
             'api_key',
             'api_key_masked',
+            'model',
             'task_type',
             'is_active',
             'priority',

@@ -167,6 +167,7 @@ CELERY_IMPORTS = (
     'celery_tasks.ai_tasks',
     'celery_tasks.crawl_tasks',
     'celery_tasks.stats_tasks',
+    'celery_tasks.publish_tasks',
 )
 CELERY_BEAT_SCHEDULE = {
     'crawl-inspirations-daily': {
@@ -177,6 +178,10 @@ CELERY_BEAT_SCHEDULE = {
     'update-stats-hourly': {
         'task': 'celery_tasks.stats_tasks.update_daily_stats',
         'schedule': crontab(minute=0),
+    },
+    'auto-generate-chapters-daily': {
+        'task': 'celery_tasks.ai_tasks.auto_generate_chapters_daily',
+        'schedule': crontab(hour=8, minute=0),
     },
 }
 

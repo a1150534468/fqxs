@@ -19,3 +19,18 @@ export const deleteInspiration = async (id: number | string) => {
   const response = await request.delete(`/inspirations/${id}/`);
   return response.data;
 };
+
+export const generateFromTrends = async () => {
+  const response = await request.post('/inspirations/generate-from-trends/');
+  return response.data;
+};
+
+export const startProject = async (id: number | string) => {
+  const response = await request.post(`/inspirations/${id}/start-project/`);
+  return response.data;
+};
+
+export const generateCustom = async (data: { prompt: string; count: number }) => {
+  const response = await request.post('/inspirations/generate-custom/', data);
+  return response.data;
+};

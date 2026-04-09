@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +17,7 @@ from apps.chapters.serializers import ChapterSerializer
 from apps.novels.models import NovelProject
 from apps.tasks.models import Task
 from celery_tasks.ai_tasks import generate_chapter_async
+from celery_tasks.publish_tasks import publish_chapter_async
 
 PUBLISH_STATUS_TO_INTERNAL = {
     'draft': ('generating', 'pending_review', 'approved'),
@@ -124,6 +126,55 @@ class ChapterViewSet(viewsets.ModelViewSet):
         """Soft delete the chapter instead of removing the row."""
         instance.is_deleted = True
         instance.save(update_fields=['is_deleted', 'updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='publish')
+    def publish(self, request, pk=None):
+        """Publish a chapter to Tomato Novel platform."""
+        chapter = self.get_object()
+
+        # Check if chapter is approved
+        if chapter.status != 'approved':
+            return Response(
+                {'error': 'Chapter must be approved before publishing. Current status: ' + chapter.status},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if already published
+        if chapter.status == 'published':
+            return Response(
+                {'error': 'Chapter is already published'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create task record
+        task_record = Task.objects.create(
+            task_type='publish_chapter',
+            related_type='chapter',
+            related_id=chapter.id,
+            status='pending',
+            params={
+                'chapter_id': chapter.id,
+                'project_id': chapter.project.id,
+            },
+        )
+
+        # Trigger async publish task
+        async_result = publish_chapter_async.delay(
+            chapter.id,
+            task_record_id=task_record.id,
+        )
+        task_record.celery_task_id = async_result.id
+        task_record.save(update_fields=['celery_task_id', 'updated_at'])
+
+        return Response(
+            {
+                'task_id': async_result.id,
+                'task_record_id': task_record.id,
+                'status': task_record.status,
+                'message': 'Chapter publishing task started',
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class ChapterGenerateAsyncRequestSerializer(serializers.Serializer):

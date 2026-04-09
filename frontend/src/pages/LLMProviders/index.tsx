@@ -21,7 +21,7 @@ const LLMProviders: React.FC = () => {
     try {
       const response = await llmProviderApi.list();
       // Django REST Framework pagination returns {count, next, previous, results}
-      const data = response.data.results || response.data;
+      const data = (response.data as any).results || response.data;
       setProviders(Array.isArray(data) ? data : []);
     } catch (error) {
       message.error('获取 LLM Provider 列表失败');
@@ -40,6 +40,7 @@ const LLMProviders: React.FC = () => {
       priority: 50,
       task_type: 'chapter',
       provider_type: 'openai',
+      model: 'gpt-3.5-turbo',
     });
     setModalVisible(true);
   };
@@ -51,6 +52,7 @@ const LLMProviders: React.FC = () => {
       name: provider.name,
       provider_type: provider.provider_type,
       api_url: provider.api_url,
+      model: provider.model,
       task_type: provider.task_type,
       is_active: provider.is_active,
       priority: provider.priority,
@@ -77,29 +79,23 @@ const LLMProviders: React.FC = () => {
   const handleTestConnectionInModal = async () => {
     try {
       // 先验证必填字段
-      await form.validateFields(['name', 'provider_type', 'api_url', 'api_key', 'task_type']);
+      await form.validateFields(['api_url', 'api_key', 'model']);
 
       setTestingConnection(true);
       const values = form.getFieldsValue();
 
-      // 创建临时 Provider 用于测试
-      const tempProvider = await llmProviderApi.create({
-        ...values,
-        is_active: false, // 临时创建，先设为不启用
-      } as LLMProviderCreate);
-
-      // 测试连接
-      const response = await llmProviderApi.testConnection(tempProvider.data.id);
+      // 直接测试连接，不创建数据库记录
+      const response = await llmProviderApi.testConnectionPreview({
+        api_url: values.api_url,
+        api_key: values.api_key,
+        model: values.model,
+      });
 
       if (response.data.status === 'success') {
         message.success('连接测试成功！可以保存配置了');
         setConnectionTested(true);
-        // 删除临时 Provider
-        await llmProviderApi.delete(tempProvider.data.id);
       } else {
         message.error(response.data.message || '连接测试失败');
-        // 删除临时 Provider
-        await llmProviderApi.delete(tempProvider.data.id);
       }
     } catch (error: any) {
       message.error(error.response?.data?.message || '连接测试失败，请检查配置');
@@ -175,6 +171,11 @@ const LLMProviders: React.FC = () => {
       title: 'API Key',
       dataIndex: 'api_key_masked',
       key: 'api_key_masked',
+    },
+    {
+      title: '模型',
+      dataIndex: 'model',
+      key: 'model',
     },
     {
       title: '任务类型',
@@ -302,6 +303,14 @@ const LLMProviders: React.FC = () => {
             rules={editingProvider ? [] : [{ required: true, message: '请输入 API Key' }]}
           >
             <Input.Password placeholder={editingProvider ? '留空则不修改' : '请输入 API Key'} />
+          </Form.Item>
+
+          <Form.Item
+            name="model"
+            label="模型名称"
+            rules={[{ required: true, message: '请输入模型名称' }]}
+          >
+            <Input placeholder="例如: gpt-3.5-turbo, qwen-turbo, qwen-plus" />
           </Form.Item>
 
           <Form.Item

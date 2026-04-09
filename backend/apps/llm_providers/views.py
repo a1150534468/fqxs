@@ -28,18 +28,79 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    @action(detail=False, methods=['post'])
+    def test_connection_preview(self, request):
+        """Test LLM provider connection without saving to database."""
+        api_url = request.data.get('api_url')
+        api_key = request.data.get('api_key')
+        model = request.data.get('model')
+
+        if not all([api_url, api_key, model]):
+            return Response({
+                'status': 'error',
+                'message': 'Missing required fields: api_url, api_key, model',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            response = requests.post(
+                f"{api_url.rstrip('/')}/chat/completions",
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'model': model,
+                    'messages': [{'role': 'user', 'content': 'test'}],
+                    'max_tokens': 5,
+                },
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                logger.info(f'LLM provider connection test successful')
+                return Response({
+                    'status': 'success',
+                    'message': 'Connection test successful',
+                })
+            else:
+                logger.warning(f'LLM provider connection test failed: {response.status_code}')
+                try:
+                    error_detail = response.json()
+                    error_message = error_detail.get('error', {}).get('message', response.text)
+                except:
+                    error_message = response.text[:200] if response.text else f'HTTP {response.status_code}'
+
+                return Response({
+                    'status': 'error',
+                    'message': f'Connection failed: {error_message}',
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except requests.exceptions.Timeout:
+            logger.error(f'LLM provider connection test timeout')
+            return Response({
+                'status': 'error',
+                'message': 'Connection timeout - please check API URL and network',
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except requests.exceptions.RequestException as e:
+            logger.error(f'LLM provider connection test error: {e}')
+            return Response({
+                'status': 'error',
+                'message': f'Connection error: {str(e)}',
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f'LLM provider connection test error: {e}')
+            return Response({
+                'status': 'error',
+                'message': str(e),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def test_connection(self, request, pk=None):
         """Test LLM provider connection."""
         provider = self.get_object()
 
-        # 根据 provider_type 选择合适的测试模型
-        model_map = {
-            'openai': 'gpt-3.5-turbo',
-            'tongyi': 'qwen-turbo',  # 通义千问的模型
-            'custom': 'gpt-3.5-turbo',  # 默认使用 OpenAI 格式
-        }
-        test_model = model_map.get(provider.provider_type, 'gpt-3.5-turbo')
+        # 使用用户配置的模型名称
+        test_model = provider.model
 
         try:
             response = requests.post(

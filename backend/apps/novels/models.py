@@ -37,6 +37,18 @@ class NovelProject(models.Model):
     update_frequency = models.IntegerField(default=1, verbose_name='每日更新章节数')
     last_update_at = models.DateTimeField(null=True, blank=True, verbose_name='最后更新时间')
     tomato_book_id = models.CharField(max_length=100, blank=True, null=True, verbose_name='番茄小说书籍 ID')
+    auto_generation_enabled = models.BooleanField(default=False, verbose_name='是否启用自动生成')
+    generation_schedule = models.CharField(
+        max_length=20,
+        choices=[
+            ('daily', '每天'),
+            ('every_2_days', '每2天'),
+            ('weekly', '每周'),
+        ],
+        default='daily',
+        verbose_name='生成计划',
+    )
+    next_generation_time = models.DateTimeField(null=True, blank=True, verbose_name='下次生成时间')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
     is_deleted = models.BooleanField(default=False, verbose_name='是否删除')

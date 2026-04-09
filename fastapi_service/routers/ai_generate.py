@@ -2,6 +2,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Header
 
+from models.inspiration_schemas import (
+    InspirationGenerateRequest,
+    InspirationGenerateResponse,
+    CustomInspirationRequest,
+)
 from models.schemas import (
     ChapterRequest,
     ChapterResponse,
@@ -67,3 +72,42 @@ async def continue_content(
         continue_length=payload.continue_length,
     )
     return ContinueResponse(continued_content=content, word_count=word_count)
+
+
+@router.post("/generate/inspiration", response_model=InspirationGenerateResponse)
+async def generate_inspiration(
+    payload: InspirationGenerateRequest,
+    authorization: Optional[str] = Header(None),
+) -> InspirationGenerateResponse:
+    # Extract token from Authorization header
+    if authorization and authorization.startswith('Bearer '):
+        token = authorization.replace('Bearer ', '')
+        llm_client.set_user_token(token)
+
+    # Convert Pydantic models to dicts for processing
+    trending_books = [book.model_dump() for book in payload.trending_books]
+
+    result = await llm_client.generate_inspiration(
+        trending_books=trending_books,
+        genre_preference=payload.genre_preference,
+    )
+
+    return InspirationGenerateResponse(**result)
+
+
+@router.post("/generate/custom-inspiration", response_model=InspirationGenerateResponse)
+async def generate_custom_inspiration(
+    payload: CustomInspirationRequest,
+    authorization: Optional[str] = Header(None),
+) -> InspirationGenerateResponse:
+    # Extract token from Authorization header
+    if authorization and authorization.startswith('Bearer '):
+        token = authorization.replace('Bearer ', '')
+        llm_client.set_user_token(token)
+
+    result = await llm_client.generate_custom_inspiration(
+        custom_prompt=payload.custom_prompt,
+        count=payload.count,
+    )
+
+    return InspirationGenerateResponse(**result)

@@ -32,3 +32,8 @@ export const deleteChapter = async (id: string | number) => {
   const response = await request.delete(`/chapters/${id}/`);
   return response.data;
 };
+
+export const publishChapter = async (id: string | number) => {
+  const response = await request.post(`/chapters/${id}/publish/`);
+  return response.data;
+};

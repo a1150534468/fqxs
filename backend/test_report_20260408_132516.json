@@ -1,0 +1,253 @@
+{
+  "timestamp": "2026-04-08T13:25:16.204153",
+  "summary": {
+    "total": 19,
+    "passed": 14,
+    "failed": 5,
+    "pass_rate": "73.7%"
+  },
+  "results": [
+    {
+      "name": "User Login",
+      "passed": true,
+      "message": "Successfully logged in and obtained JWT token",
+      "details": {
+        "token_length": 319
+      },
+      "timestamp": "2026-04-08T13:24:43.393867"
+    },
+    {
+      "name": "Create Sample Inspirations",
+      "passed": true,
+      "message": "Created 3 new inspirations, total available: 7",
+      "details": {
+        "created": 3
+      },
+      "timestamp": "2026-04-08T13:24:43.401638"
+    },
+    {
+      "name": "Generate Inspiration from Trends",
+      "passed": true,
+      "message": "Generated 3 AI inspirations",
+      "details": {
+        "created_count": 3,
+        "inspirations": [
+          {
+            "title": "都市之觉醒",
+            "synopsis": "这是一个关于都市题材的创新故事，融合了热门元素与独特设定。主角在逆境中成长，最终改变命运。",
+            "genre": "都市",
+            "selling_points": [
+              "独特的世界观设定",
+              "快节奏爽文风格",
+              "强大的主角成长线",
+              "丰富的配角群像"
+            ],
+            "target_audience": "18-35岁男性读者",
+            "estimated_popularity": 75.0
+          },
+          {
+            "title": "都市之逆袭",
+            "synopsis": "这是一个关于都市题材的创新故事，融合了热门元素与独特设定。主角在逆境中成长，最终改变命运。",
+            "genre": "都市",
+            "selling_points": [
+              "独特的世界观设定",
+              "快节奏爽文风格",
+              "强大的主角成长线",
+              "丰富的配角群像"
+            ],
+            "target_audience": "18-35岁男性读者",
+            "estimated_popularity": 80.0
+          },
+          {
+            "title": "都市之崛起",
+            "synopsis": "这是一个关于都市题材的创新故事，融合了热门元素与独特设定。主角在逆境中成长，最终改变命运。",
+            "genre": "都市",
+            "selling_points": [
+              "独特的世界观设定",
+              "快节奏爽文风格",
+              "强大的主角成长线",
+              "丰富的配角群像"
+            ],
+            "target_audience": "18-35岁男性读者",
+            "estimated_popularity": 85.0
+          }
+        ]
+      },
+      "timestamp": "2026-04-08T13:24:43.539606"
+    },
+    {
+      "name": "List Inspirations",
+      "passed": true,
+      "message": "Retrieved 11 inspirations",
+      "details": {
+        "count": 11,
+        "first_id": 17
+      },
+      "timestamp": "2026-04-08T13:24:43.571152"
+    },
+    {
+      "name": "Start Project from Inspiration",
+      "passed": true,
+      "message": "Project created with ID 4, first chapter ID 3",
+      "details": {
+        "project_id": 4,
+        "title": "测试小说项目",
+        "outline_length": 240,
+        "first_chapter": {
+          "id": 3,
+          "title": "第一章：觉醒",
+          "word_count": 789,
+          "status": "pending_review"
+        }
+      },
+      "timestamp": "2026-04-08T13:24:43.762026"
+    },
+    {
+      "name": "Verify Project Creation",
+      "passed": true,
+      "message": "Database verification: 7/7 checks passed",
+      "details": {
+        "project_exists": true,
+        "project_status": true,
+        "has_outline": true,
+        "current_chapter": true,
+        "chapter_exists": true,
+        "chapter_status": true,
+        "has_content": true
+      },
+      "timestamp": "2026-04-08T13:24:43.767377"
+    },
+    {
+      "name": "Generate Next Chapter Async",
+      "passed": true,
+      "message": "Task submitted with ID 93cf9ca1-182c-4b7e-861b-1be4cb94c754",
+      "details": {
+        "task_id": "93cf9ca1-182c-4b7e-861b-1be4cb94c754",
+        "task_record_id": 1,
+        "status": "pending"
+      },
+      "timestamp": "2026-04-08T13:24:43.836142"
+    },
+    {
+      "name": "Check Task Status",
+      "passed": true,
+      "message": "Task status: PENDING",
+      "details": {
+        "celery_status": "PENDING",
+        "task_record": {
+          "id": 1,
+          "task_type": "generate_chapter",
+          "status": "pending",
+          "retry_count": 0,
+          "error_message": null,
+          "created_at": "2026-04-08T05:24:43.797481Z",
+          "updated_at": "2026-04-08T05:24:43.833206Z"
+        }
+      },
+      "timestamp": "2026-04-08T13:24:45.884848"
+    },
+    {
+      "name": "Verify Chapter Generation",
+      "passed": false,
+      "message": "Chapter 2 not found after waiting",
+      "details": {},
+      "timestamp": "2026-04-08T13:25:15.989892"
+    },
+    {
+      "name": "Get Chapter Detail",
+      "passed": true,
+      "message": "Retrieved chapter: 第一章：觉醒",
+      "details": {
+        "id": 3,
+        "title": "第一章：觉醒",
+        "status": "pending_review",
+        "word_count": 789
+      },
+      "timestamp": "2026-04-08T13:25:16.013053"
+    },
+    {
+      "name": "Edit Chapter Content",
+      "passed": false,
+      "message": "Chapter updated to status: pending_review",
+      "details": {
+        "id": 3,
+        "status": "pending_review",
+        "content_modified": true
+      },
+      "timestamp": "2026-04-08T13:25:16.041555"
+    },
+    {
+      "name": "Publish Chapter Simulation",
+      "passed": false,
+      "message": "Chapter must be approved before publishing, current status: pending_review",
+      "details": {},
+      "timestamp": "2026-04-08T13:25:16.045726"
+    },
+    {
+      "name": "Verify Publish Status",
+      "passed": false,
+      "message": "Published: False, Has timestamp: False, Has tomato ID: False",
+      "details": {
+        "status": "pending_review",
+        "published_at": null,
+        "tomato_chapter_id": null
+      },
+      "timestamp": "2026-04-08T13:25:16.068327"
+    },
+    {
+      "name": "List Tasks",
+      "passed": true,
+      "message": "Retrieved 1 tasks",
+      "details": {
+        "count": 1,
+        "results_count": 1
+      },
+      "timestamp": "2026-04-08T13:25:16.094560"
+    },
+    {
+      "name": "Filter Tasks by Status",
+      "passed": true,
+      "message": "Retrieved 0 tasks with status filter",
+      "details": {
+        "count": 0,
+        "all_match_filter": true
+      },
+      "timestamp": "2026-04-08T13:25:16.119069"
+    },
+    {
+      "name": "Filter Tasks by Type",
+      "passed": true,
+      "message": "Retrieved 1 generate_chapter tasks",
+      "details": {
+        "count": 1,
+        "all_match_filter": true
+      },
+      "timestamp": "2026-04-08T13:25:16.141129"
+    },
+    {
+      "name": "List Projects",
+      "passed": true,
+      "message": "Retrieved 1 projects",
+      "details": {
+        "count": 1
+      },
+      "timestamp": "2026-04-08T13:25:16.166601"
+    },
+    {
+      "name": "List Chapters",
+      "passed": true,
+      "message": "Retrieved 1 chapters for project 4",
+      "details": {
+        "count": 1
+      },
+      "timestamp": "2026-04-08T13:25:16.190661"
+    },
+    {
+      "name": "User Stats",
+      "passed": false,
+      "message": "Failed with status 404",
+      "details": {},
+      "timestamp": "2026-04-08T13:25:16.203531"
+    }
+  ]
+}

@@ -7,11 +7,13 @@ import { AuthRoute } from './components/AuthRoute';
 import Login from './pages/Login';
 import Inspirations from './pages/Inspirations';
 import Novels from './pages/Novels';
+import { ProjectDetail } from './pages/Novels/ProjectDetail';
 import Dashboard from './pages/Dashboard';
 import LLMProviders from './pages/LLMProviders';
 import { Chapters } from './pages/Chapters';
 import { ChapterEditor } from './pages/Chapters/ChapterEditor';
 import { ChapterPreview } from './pages/Chapters/ChapterPreview';
+import Tasks from './pages/Tasks';
 import './App.css';
 
 function App() {
@@ -28,10 +30,12 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="inspirations" element={<Inspirations />} />
           <Route path="novels" element={<Novels />} />
+          <Route path="novels/:id" element={<ProjectDetail />} />
           <Route path="novels/:projectId/chapters" element={<Chapters />} />
           <Route path="novels/:projectId/chapters/create" element={<ChapterEditor />} />
           <Route path="novels/:projectId/chapters/:chapterId/edit" element={<ChapterEditor />} />
           <Route path="novels/:projectId/chapters/:chapterId/preview" element={<ChapterPreview />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="llm-providers" element={<LLMProviders />} />
         </Route>
 

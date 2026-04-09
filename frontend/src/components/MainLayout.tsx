@@ -9,7 +9,8 @@ import {
   Menu as MenuIcon,
   LogOut,
   User as UserIcon,
-  Cpu
+  Cpu,
+  ListChecks
 } from 'lucide-react';
 
 const { Header, Sider, Content } = Layout;
@@ -41,6 +42,11 @@ export const MainLayout: React.FC = () => {
       key: '/novels',
       icon: <BookOpen size={18} />,
       label: '项目管理',
+    },
+    {
+      key: '/tasks',
+      icon: <ListChecks size={18} />,
+      label: '任务监控',
     },
     {
       key: '/llm-providers',

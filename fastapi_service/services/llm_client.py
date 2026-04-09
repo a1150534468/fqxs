@@ -34,6 +34,12 @@ class LLMClient:
         "pacing of the provided content. Output only the continuation text."
     )
 
+    SYSTEM_INSPIRATION = (
+        "You are a professional web novel market analyst and creative consultant. "
+        "Analyze trending novels and generate innovative story concepts that combine "
+        "popular elements with unique twists. Focus on Chinese web fiction market trends."
+    )
+
     def __init__(self):
         self._use_mock = settings.mock_generation or not settings.llm_api_key
         self._user_token: Optional[str] = None
@@ -90,6 +96,16 @@ class LLMClient:
             return await self._mock_continue_content(current_content, continue_length)
         return await self._real_continue_content(current_content, continue_length)
 
+    async def generate_inspiration(self, trending_books: list, genre_preference: str = ""):
+        if self._use_mock:
+            return await self._mock_generate_inspiration(trending_books, genre_preference)
+        return await self._real_generate_inspiration(trending_books, genre_preference)
+
+    async def generate_custom_inspiration(self, custom_prompt: str, count: int = 3):
+        if self._use_mock:
+            return await self._mock_generate_custom_inspiration(custom_prompt, count)
+        return await self._real_generate_custom_inspiration(custom_prompt, count)
+
     # ------------------------------------------------------------------
     # Real LLM methods
     # ------------------------------------------------------------------
@@ -130,6 +146,91 @@ class LLMClient:
         )
         content = await self._call_llm(self.SYSTEM_CONTINUE, user_msg)
         return content, self._count_words(content)
+
+    async def _real_generate_inspiration(self, trending_books: list, genre_preference: str = ""):
+        books_summary = "\n".join([
+            f"- 《{book['title']}》(热度: {book.get('hot_score', 0)}): {book.get('synopsis', '')[:100]}"
+            f" 标签: {', '.join(book.get('tags', []))}"
+            for book in trending_books[:10]
+        ])
+
+        user_msg = (
+            f"请分析以下热门小说榜单，生成3个创新的小说创意：\n\n"
+            f"{books_summary}\n\n"
+        )
+        if genre_preference:
+            user_msg += f"偏好题材：{genre_preference}\n\n"
+
+        user_msg += (
+            "请为每个创意提供：\n"
+            "1. 书名（吸引人且符合网文风格）\n"
+            "2. 简介（100-200字）\n"
+            "3. 题材分类\n"
+            "4. 核心卖点（3-5个）\n"
+            "5. 目标读者群\n"
+            "6. 预估热度（0-100分）\n\n"
+            "请以JSON格式返回，格式如下：\n"
+            '{"inspirations": [{"title": "...", "synopsis": "...", "genre": "...", '
+            '"selling_points": ["...", "..."], "target_audience": "...", "estimated_popularity": 85.0}], '
+            '"analysis_summary": "市场分析总结..."}'
+        )
+
+        content = await self._call_llm(self.SYSTEM_INSPIRATION, user_msg)
+
+        # Try to parse JSON response
+        try:
+            import json
+            # Extract JSON from markdown code blocks if present
+            if '```json' in content:
+                content = content.split('```json')[1].split('```')[0].strip()
+            elif '```' in content:
+                content = content.split('```')[1].split('```')[0].strip()
+
+            result = json.loads(content)
+            return result
+        except Exception:
+            # Fallback if JSON parsing fails
+            return {
+                "inspirations": [],
+                "analysis_summary": content
+            }
+
+    async def _real_generate_custom_inspiration(self, custom_prompt: str, count: int = 3):
+        user_msg = (
+            f"根据以下用户需求，生成 {count} 个创新的小说创意：\n\n"
+            f"{custom_prompt}\n\n"
+            "请为每个创意提供：\n"
+            "1. 书名（吸引人且符合网文风格）\n"
+            "2. 简介（100-200字）\n"
+            "3. 题材分类\n"
+            "4. 核心卖点（3-5个）\n"
+            "5. 目标读者群\n"
+            "6. 预估热度（0-100分）\n\n"
+            "请以JSON格式返回，格式如下：\n"
+            '{"inspirations": [{"title": "...", "synopsis": "...", "genre": "...", '
+            '"selling_points": ["...", "..."], "target_audience": "...", "estimated_popularity": 85.0}], '
+            '"analysis_summary": "创意分析总结..."}'
+        )
+
+        content = await self._call_llm(self.SYSTEM_INSPIRATION, user_msg)
+
+        # Try to parse JSON response
+        try:
+            import json
+            # Extract JSON from markdown code blocks if present
+            if '```json' in content:
+                content = content.split('```json')[1].split('```')[0].strip()
+            elif '```' in content:
+                content = content.split('```')[1].split('```')[0].strip()
+
+            result = json.loads(content)
+            return result
+        except Exception:
+            # Fallback if JSON parsing fails
+            return {
+                "inspirations": [],
+                "analysis_summary": content
+            }
 
     async def _call_llm(self, system_message: str, user_message: str) -> str:
         """Call LLM using provider manager or fallback to default settings."""
@@ -246,6 +347,60 @@ class LLMClient:
 
         continued_content = "\n\n".join(paragraphs)
         return continued_content, self._count_words(continued_content)
+
+    async def _mock_generate_inspiration(self, trending_books: list, genre_preference: str = ""):
+        await asyncio.sleep(0.1)
+
+        genres = ["都市", "玄幻", "仙侠", "科幻", "悬疑", "历史"]
+        selected_genre = genre_preference if genre_preference else genres[len(trending_books) % len(genres)]
+
+        inspirations = []
+        for i in range(3):
+            inspirations.append({
+                "title": f"{selected_genre}之{['觉醒', '逆袭', '崛起', '传说'][i % 4]}",
+                "synopsis": f"这是一个关于{selected_genre}题材的创新故事，融合了热门元素与独特设定。主角在逆境中成长，最终改变命运。",
+                "genre": selected_genre,
+                "selling_points": [
+                    "独特的世界观设定",
+                    "快节奏爽文风格",
+                    "强大的主角成长线",
+                    "丰富的配角群像"
+                ],
+                "target_audience": "18-35岁男性读者",
+                "estimated_popularity": 75.0 + i * 5
+            })
+
+        return {
+            "inspirations": inspirations,
+            "analysis_summary": f"基于{len(trending_books)}本热门书籍分析，当前{selected_genre}题材热度较高，建议融合创新元素。"
+        }
+
+    async def _mock_generate_custom_inspiration(self, custom_prompt: str, count: int = 3):
+        await asyncio.sleep(0.1)
+
+        genres = ["都市", "玄幻", "仙侠", "科幻", "悬疑", "历史"]
+        selected_genre = genres[len(custom_prompt) % len(genres)]
+
+        inspirations = []
+        for i in range(count):
+            inspirations.append({
+                "title": f"{selected_genre}之{['觉醒', '逆袭', '崛起', '传说', '重生'][i % 5]}",
+                "synopsis": f"基于用户需求「{custom_prompt[:30]}...」创作的{selected_genre}题材故事。主角在逆境中成长，最终改变命运。",
+                "genre": selected_genre,
+                "selling_points": [
+                    "符合用户需求的独特设定",
+                    "快节奏爽文风格",
+                    "强大的主角成长线",
+                    "丰富的配角群像"
+                ],
+                "target_audience": "18-35岁读者",
+                "estimated_popularity": 70.0 + i * 5
+            })
+
+        return {
+            "inspirations": inspirations,
+            "analysis_summary": f"基于用户自定义需求生成了{count}个{selected_genre}题材创意。"
+        }
 
     @staticmethod
     def _count_words(content: str) -> int:
