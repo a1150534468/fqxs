@@ -3,11 +3,13 @@ import {
   getUserStats,
   getDashboardStats,
   getRecentGenerations,
+  getTasksSummary,
   type UserStats,
   type DashboardStats,
   type RecentGeneration,
   type TrendDataPoint,
   type PieDataPoint,
+  type TaskSummary,
 } from '../api/stats';
 
 interface StatsState {
@@ -29,11 +31,16 @@ interface StatsState {
   recentGenerations: RecentGeneration[];
   recentLoading: boolean;
 
+  // Task queue
+  taskSummary: TaskSummary | null;
+  taskSummaryLoading: boolean;
+
   // Actions
   fetchUserStats: () => Promise<void>;
   fetchDashboardStats: () => Promise<void>;
   fetchTrendData: () => Promise<void>;
   fetchRecentGenerations: () => Promise<void>;
+  fetchTaskSummary: () => Promise<void>;
   fetchAll: () => Promise<void>;
 }
 
@@ -74,6 +81,8 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   trendLoading: false,
   recentGenerations: [],
   recentLoading: false,
+  taskSummary: null,
+  taskSummaryLoading: false,
 
   fetchUserStats: async () => {
     set({ userStatsLoading: true });
@@ -157,13 +166,32 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
     }
   },
 
+  fetchTaskSummary: async () => {
+    set({ taskSummaryLoading: true });
+    try {
+      const data = await getTasksSummary();
+      set({ taskSummary: data });
+    } catch (error) {
+      console.warn('Task summary API unavailable');
+    } finally {
+      set({ taskSummaryLoading: false });
+    }
+  },
+
   fetchAll: async () => {
-    const { fetchUserStats, fetchDashboardStats, fetchTrendData, fetchRecentGenerations } = get();
+    const {
+      fetchUserStats,
+      fetchDashboardStats,
+      fetchTrendData,
+      fetchRecentGenerations,
+      fetchTaskSummary,
+    } = get();
     await Promise.allSettled([
       fetchUserStats(),
       fetchDashboardStats(),
       fetchTrendData(),
       fetchRecentGenerations(),
+      fetchTaskSummary(),
     ]);
   },
 }));

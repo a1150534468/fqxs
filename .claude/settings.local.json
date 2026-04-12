@@ -33,7 +33,8 @@
       "Bash(CCB_CALLER=claude ~/.local/bin/ccb-ping codex:*)",
       "Bash(~/.local/bin/ccb codex:*)",
       "Bash(tmux kill-pane:*)",
-      "WebFetch(domain:ncnnujysujcj.feishu.cn)"
+      "WebFetch(domain:ncnnujysujcj.feishu.cn)",
+      "Bash(git push:*)"
     ]
   }
 }

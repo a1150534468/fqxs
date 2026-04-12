@@ -22,12 +22,23 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
 
-        <Route path="/" element={
-          <AuthRoute>
-            <MainLayout />
-          </AuthRoute>
-        }>
-          <Route index element={<Dashboard />} />
+        <Route
+          path="/"
+          element={
+            <AuthRoute>
+              <Dashboard />
+            </AuthRoute>
+          }
+        />
+
+        <Route
+          path="/"
+          element={
+            <AuthRoute>
+              <MainLayout />
+            </AuthRoute>
+          }
+        >
           <Route path="inspirations" element={<Inspirations />} />
           <Route path="novels" element={<Novels />} />
           <Route path="novels/:id" element={<ProjectDetail />} />

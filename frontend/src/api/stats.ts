@@ -65,6 +65,18 @@ export interface RecentGeneration {
   word_count?: number;
 }
 
+export interface TaskSummary {
+  total: number;
+  status_counts: Record<string, number>;
+  recent_tasks: {
+    id: number;
+    task_type: string;
+    status: string;
+    created_at: string;
+    started_at?: string | null;
+  }[];
+}
+
 export const getUserStats = async (): Promise<UserStats> => {
   const response = await request.get('/users/me/stats/');
   return response.data;
@@ -122,5 +134,11 @@ export const getRecentGenerations = async (
   const response = await request.get('/stats/recent-generations/', {
     params: { limit },
   });
+  return response.data;
+};
+
+/** GET /api/stats/tasks-summary/ - aggregated Celery task queue stats */
+export const getTasksSummary = async (): Promise<TaskSummary> => {
+  const response = await request.get('/stats/tasks-summary/');
   return response.data;
 };
