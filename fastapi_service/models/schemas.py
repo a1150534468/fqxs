@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -36,3 +38,31 @@ class ContinueRequest(APIBaseModel):
 class ContinueResponse(APIBaseModel):
     continued_content: str
     word_count: int
+
+
+class PriorSetting(APIBaseModel):
+    setting_type: str
+    title: str = ""
+    content: str = ""
+    structured_data: dict = {}
+
+
+class SettingGenerateRequest(APIBaseModel):
+    setting_type: Literal[
+        'worldview', 'characters', 'map', 'storyline', 'plot_arc',
+        'opening', 'dimension_framework', 'main_characters',
+        'map_system', 'main_sub_plots', 'plot_extraction',
+    ]
+    book_title: str
+    genre: str = ""
+    context: str = ""
+    prior_settings: list[PriorSetting] = []
+
+
+class SettingGenerateResponse(APIBaseModel):
+    setting_type: str
+    title: str
+    content: str
+    structured_data: dict = {}
+    validation_ok: bool = True
+    retries: int = 0

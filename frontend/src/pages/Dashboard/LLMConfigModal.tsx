@@ -3,24 +3,30 @@ import { Button, Table, Modal, Form, Input, Select, Switch, message, Space, Tag 
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons';
 import { llmProviderApi, type LLMProvider, type LLMProviderCreate } from '../../api/llmProviders';
 
-const LLMProviders: React.FC = () => {
+interface LLMConfigModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export const LLMConfigModal: React.FC<LLMConfigModalProps> = ({ open, onClose }) => {
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [loading, setLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [formModalVisible, setFormModalVisible] = useState(false);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTested, setConnectionTested] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    fetchProviders();
-  }, []);
+    if (open) {
+      fetchProviders();
+    }
+  }, [open]);
 
   const fetchProviders = async () => {
     setLoading(true);
     try {
       const response = await llmProviderApi.list();
-      // Django REST Framework pagination returns {count, next, previous, results}
       const data = (response.data as any).results || response.data;
       setProviders(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -42,12 +48,12 @@ const LLMProviders: React.FC = () => {
       provider_type: 'openai',
       model: 'gpt-3.5-turbo',
     });
-    setModalVisible(true);
+    setFormModalVisible(true);
   };
 
   const handleEdit = (provider: LLMProvider) => {
     setEditingProvider(provider);
-    setConnectionTested(true); // 编辑时不需要重新测试
+    setConnectionTested(true);
     form.setFieldsValue({
       name: provider.name,
       provider_type: provider.provider_type,
@@ -57,7 +63,7 @@ const LLMProviders: React.FC = () => {
       is_active: provider.is_active,
       priority: provider.priority,
     });
-    setModalVisible(true);
+    setFormModalVisible(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -78,13 +84,11 @@ const LLMProviders: React.FC = () => {
 
   const handleTestConnectionInModal = async () => {
     try {
-      // 先验证必填字段
       await form.validateFields(['api_url', 'api_key', 'model']);
 
       setTestingConnection(true);
       const values = form.getFieldsValue();
 
-      // 直接测试连接，不创建数据库记录
       const response = await llmProviderApi.testConnectionPreview({
         api_url: values.api_url,
         api_key: values.api_key,
@@ -118,7 +122,6 @@ const LLMProviders: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    // 新建时必须先测试连接
     if (!editingProvider && !connectionTested) {
       message.warning('请先测试连接，确保配置正确后再保存');
       return;
@@ -133,7 +136,7 @@ const LLMProviders: React.FC = () => {
         await llmProviderApi.create(values as LLMProviderCreate);
         message.success('创建成功');
       }
-      setModalVisible(false);
+      setFormModalVisible(false);
       setConnectionTested(false);
       fetchProviders();
     } catch (error) {
@@ -240,9 +243,15 @@ const LLMProviders: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
-        <h2>LLM Provider 管理</h2>
+    <Modal
+      title="LLM Provider 管理"
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={900}
+      destroyOnClose
+    >
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
           添加 Provider
         </Button>
@@ -254,14 +263,15 @@ const LLMProviders: React.FC = () => {
         rowKey="id"
         loading={loading}
         pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
       />
 
       <Modal
         title={editingProvider ? '编辑 LLM Provider' : '添加 LLM Provider'}
-        open={modalVisible}
+        open={formModalVisible}
         onOk={handleSubmit}
         onCancel={() => {
-          setModalVisible(false);
+          setFormModalVisible(false);
           setConnectionTested(false);
         }}
         width={600}
@@ -357,8 +367,6 @@ const LLMProviders: React.FC = () => {
           )}
         </Form>
       </Modal>
-    </div>
+    </Modal>
   );
 };
-
-export default LLMProviders;

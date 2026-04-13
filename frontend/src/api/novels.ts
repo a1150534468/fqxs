@@ -44,3 +44,75 @@ export const generateNextChapter = async (id: number | string) => {
   const response = await request.post(`/novels/${id}/generate-next-chapter/`);
   return response.data;
 };
+
+export const generateSetting = async (id: number | string, data: { setting_type: string; context: string }) => {
+  const response = await request.post(`/novels/${id}/generate-setting/`, data);
+  return response.data;
+};
+
+export const saveWizardStep = async (id: number | string, data: { setting_type: string; title: string; content: string; structured_data?: any }) => {
+  const response = await request.post(`/novels/${id}/wizard-step/`, data);
+  return response.data;
+};
+
+export const getNovelSettings = async (id: number | string) => {
+  const response = await request.get(`/novels/${id}/settings/`);
+  return response.data;
+};
+
+export const getKnowledgeGraph = async (id: number | string) => {
+  const response = await request.get(`/novels/${id}/knowledge-graph/`);
+  return response.data;
+};
+
+export const completeWizard = async (id: number | string) => {
+  const response = await request.post(`/novels/${id}/complete-wizard/`);
+  return response.data;
+};
+
+// ------------------------------------------------------------------ //
+// Draft (12-step wizard pre-project) APIs
+// ------------------------------------------------------------------ //
+
+export const createDraft = async (data: { inspiration: string; title?: string; genre?: string }) => {
+  const response = await request.post('/drafts/', data);
+  return response.data;
+};
+
+export const getDrafts = async () => {
+  const response = await request.get('/drafts/');
+  return response.data;
+};
+
+export const getDraft = async (id: number | string) => {
+  const response = await request.get(`/drafts/${id}/`);
+  return response.data;
+};
+
+export const updateDraft = async (id: number | string, data: any) => {
+  const response = await request.patch(`/drafts/${id}/`, data);
+  return response.data;
+};
+
+export const deleteDraft = async (id: number | string) => {
+  const response = await request.delete(`/drafts/${id}/`);
+  return response.data;
+};
+
+export const saveDraftStep = async (
+  id: number | string,
+  data: { setting_type: string; title: string; content: string; structured_data?: any },
+) => {
+  const response = await request.post(`/drafts/${id}/save-step/`, data);
+  return response.data;
+};
+
+export const getDraftSettings = async (id: number | string) => {
+  const response = await request.get(`/drafts/${id}/settings/`);
+  return response.data;
+};
+
+export const completeDraft = async (id: number | string) => {
+  const response = await request.post(`/drafts/${id}/complete/`);
+  return response.data;
+};

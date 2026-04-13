@@ -142,3 +142,78 @@ export const getTasksSummary = async (): Promise<TaskSummary> => {
   const response = await request.get('/stats/tasks-summary/');
   return response.data;
 };
+
+/** GET /api/stats/overview/ - homepage overview stats */
+export interface StatsOverview {
+  total_books: number;
+  total_chapters: number;
+  total_words: number;
+  status_counts: Record<string, number>;
+  today_new_chapters: number;
+}
+
+export const getStatsOverview = async (): Promise<StatsOverview> => {
+  const response = await request.get('/stats/overview/');
+  return response.data;
+};
+
+/** GET /api/stats/chapter-analytics/ - chapter-level analytics */
+export interface ChapterAnalyticsItem {
+  id: number;
+  project_id: number;
+  project_title: string;
+  chapter_number: number;
+  title: string;
+  word_count: number;
+  status: string;
+  created_at: string;
+}
+
+export interface ChapterAnalyticsSummary {
+  total_words: number;
+  avg_words: number;
+  publish_rate: number;
+  chapter_count: number;
+}
+
+export interface ChapterAnalyticsResponse {
+  chapters: ChapterAnalyticsItem[];
+  summary: ChapterAnalyticsSummary;
+}
+
+export const getChapterAnalytics = async (
+  params?: { project_id?: number }
+): Promise<ChapterAnalyticsResponse> => {
+  const response = await request.get('/stats/chapter-analytics/', { params });
+  return response.data;
+};
+
+/** GET /api/stats/character-graph/ - character relationship graph */
+export interface GraphNode {
+  id: string;
+  name: string;
+  category?: number;
+  symbolSize?: number;
+  value?: number;
+}
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  value?: number;
+  label?: string;
+}
+
+export interface CharacterGraphResponse {
+  nodes: GraphNode[];
+  links: GraphLink[];
+}
+
+export const getCharacterGraph = async (
+  projectId: number
+): Promise<CharacterGraphResponse> => {
+  const response = await request.get('/stats/character-graph/', {
+    params: { project_id: projectId },
+  });
+  return response.data;
+};

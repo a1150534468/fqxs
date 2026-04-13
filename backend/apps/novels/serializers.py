@@ -1,7 +1,26 @@
 from rest_framework import serializers
 
 from apps.inspirations.models import Inspiration
-from apps.novels.models import NovelProject
+from apps.novels.models import NovelProject, NovelSetting, NovelDraft, DraftSetting
+
+
+class NovelSettingSerializer(serializers.ModelSerializer):
+    """Serializer for novel setting (worldview, characters, map, etc.)."""
+
+    class Meta:
+        model = NovelSetting
+        fields = (
+            'id',
+            'setting_type',
+            'title',
+            'content',
+            'structured_data',
+            'ai_generated',
+            'order',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
 
 
 class NovelProjectSerializer(serializers.ModelSerializer):
@@ -31,6 +50,8 @@ class NovelProjectSerializer(serializers.ModelSerializer):
             'update_frequency',
             'last_update_at',
             'tomato_book_id',
+            'wizard_completed',
+            'wizard_step',
             'auto_generation_enabled',
             'generation_schedule',
             'next_generation_time',
@@ -98,3 +119,19 @@ class NovelProjectSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+
+class DraftSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DraftSetting
+        fields = ['id', 'setting_type', 'title', 'content', 'structured_data', 'ai_generated', 'order', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class NovelDraftSerializer(serializers.ModelSerializer):
+    settings = DraftSettingSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = NovelDraft
+        fields = ['id', 'inspiration', 'title', 'genre', 'current_step', 'is_completed', 'converted_project', 'settings', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'is_completed', 'converted_project', 'created_at', 'updated_at']

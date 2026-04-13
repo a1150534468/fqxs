@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.chapters.models import Chapter
-from apps.novels.models import NovelProject
+from apps.novels.models import NovelProject, NovelSetting
 from apps.tasks.models import Task
 from apps.stats.models import Stats
 from apps.stats.serializers import StatsSerializer
@@ -210,4 +210,115 @@ def stats_tasks_summary(request):
         'total': total,
         'status_counts': status_counts,
         'recent_tasks': recent,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def stats_overview(request):
+    """Global overview stats: total books, chapters, words, status breakdown."""
+    user = request.user
+    projects = NovelProject.objects.filter(user=user, is_deleted=False)
+    chapters = Chapter.objects.filter(
+        project__user=user, project__is_deleted=False, is_deleted=False,
+    )
+
+    total_books = projects.count()
+    total_chapters = chapters.count()
+    total_words = chapters.aggregate(s=Sum('word_count'))['s'] or 0
+
+    status_counts = {}
+    for item in projects.values('status').annotate(count=Count('id')):
+        status_counts[item['status']] = item['count']
+
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_new_chapters = chapters.filter(created_at__gte=today_start).count()
+
+    return Response({
+        'total_books': total_books,
+        'total_chapters': total_chapters,
+        'total_words': total_words,
+        'status_counts': status_counts,
+        'today_new_chapters': today_new_chapters,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def chapter_analytics(request):
+    """Per-chapter analytics with optional project_id filter."""
+    user = request.user
+    qs = Chapter.objects.select_related('project').filter(
+        project__user=user, project__is_deleted=False, is_deleted=False,
+    )
+
+    project_id = request.query_params.get('project_id')
+    if project_id:
+        qs = qs.filter(project_id=project_id)
+
+    chapters_data = []
+    for ch in qs.order_by('project', 'chapter_number'):
+        chapters_data.append({
+            'id': ch.id,
+            'chapter_number': ch.chapter_number,
+            'title': ch.title,
+            'word_count': ch.word_count,
+            'read_count': ch.read_count,
+            'status': ch.status,
+            'project_title': ch.project.title,
+            'created_at': ch.created_at.isoformat(),
+        })
+
+    total_words = sum(c['word_count'] for c in chapters_data)
+    total_chapters = len(chapters_data)
+    avg_words = round(total_words / total_chapters) if total_chapters else 0
+    published_count = sum(1 for c in chapters_data if c['status'] == 'published')
+    publish_rate = round(published_count / total_chapters * 100, 1) if total_chapters else 0
+
+    return Response({
+        'chapters': chapters_data,
+        'summary': {
+            'total_words': total_words,
+            'total_chapters': total_chapters,
+            'avg_words': avg_words,
+            'published_count': published_count,
+            'publish_rate': publish_rate,
+        },
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def character_graph(request):
+    """Return character relationship graph nodes/links from NovelSetting."""
+    project_id = request.query_params.get('project_id')
+    if not project_id:
+        return Response({'error': 'project_id is required.'}, status=400)
+
+    try:
+        setting = NovelSetting.objects.get(
+            project_id=project_id,
+            setting_type='characters',
+            project__user=request.user,
+            project__is_deleted=False,
+        )
+        data = setting.structured_data or {}
+        nodes = data.get('nodes', [])
+        links = data.get('links', [])
+        if nodes or links:
+            return Response({'nodes': nodes, 'links': links})
+    except NovelSetting.DoesNotExist:
+        pass
+
+    # Return mock data when no real data exists
+    return Response({
+        'nodes': [
+            {'name': '主角', 'category': 'protagonist', 'symbolSize': 60, 'value': '故事核心人物'},
+            {'name': '师父', 'category': 'mentor', 'symbolSize': 40, 'value': '引导者'},
+            {'name': '反派', 'category': 'antagonist', 'symbolSize': 50, 'value': '主要对手'},
+        ],
+        'links': [
+            {'source': '主角', 'target': '师父', 'value': '师徒'},
+            {'source': '主角', 'target': '反派', 'value': '宿敌'},
+        ],
     })

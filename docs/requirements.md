@@ -82,7 +82,8 @@
 | User | 用户表 | username, email, password, is_staff |
 | LLMProvider | LLM 服务配置 | user_id, name, provider_type, api_url, api_key, task_type, priority |
 | Inspiration | 创意表 | source_url, title, synopsis, tags, hot_score, rank_type, is_used |
-| NovelProject | 小说项目表 | user_id, inspiration_id, title, genre, synopsis, outline, status, target_chapters, current_chapter |
+| NovelProject | 小说项目表 | user_id, inspiration_id, title, genre, synopsis, outline, status, target_chapters, current_chapter, **wizard_completed**, **wizard_step** |
+| NovelSetting | 小说设定表 | project_id, setting_type(worldview/characters/map/storyline/plot_arc/opening/dimension_framework/main_characters/map_system/main_sub_plots/plot_extraction), title, content, structured_data(JSON), ai_generated, order |
 | Chapter | 章节表 | project_id, chapter_number, title, raw_content, final_content, word_count, status, published_at |
 | Task | 任务表 | task_type, related_type, related_id, status, celery_task_id, params, result, error_message |
 | Stats | 统计表 | date, metric_type, metric_data |
@@ -92,6 +93,7 @@
 ```
 Inspiration: collected → used
 NovelProject: active ←→ paused → completed/abandoned
+              wizard_completed: false → true (向导完成后)
 Chapter: generating → pending_review → approved → published
          ↓ (失败)
        failed → (可重新生成)
@@ -131,8 +133,23 @@ Task: pending → running → success/failed
 - `POST /api/ai/generate/outline` - 生成大纲
 - `POST /api/ai/generate/chapter` - 生成章节
 - `POST /api/ai/continue` - 内容续写
+- `POST /api/ai/generate/setting` - 生成小说设定（世界观/人物/地图/故事线/情节弧）
 
-### 4.7 错误码
+### 4.7 向导式建书
+- `POST /api/novels/<id>/generate-setting/` - AI 生成指定类型的设定
+- `POST /api/novels/<id>/wizard-step/` - 保存向导单步数据到 NovelSetting
+- `GET /api/novels/<id>/settings/` - 获取项目所有设定
+- `POST /api/novels/<id>/complete-wizard/` - 完成向导，标记 wizard_completed
+
+### 4.8 数据分析
+- `GET /api/stats/overview/` - 首页概览（总书数、总章节、总字数、各状态书数、今日新增）
+- `GET /api/stats/chapter-analytics/` - 章节级分析（支持 project_id 筛选）
+- `GET /api/stats/character-graph/` - 角色关系图数据（nodes/links，从 NovelSetting 提取）
+- `GET /api/stats/trend/` - 趋势数据（支持 metric_type 和 days 参数）
+- `GET /api/stats/recent-generations/` - 最近 AI 生成记录
+- `GET /api/stats/tasks-summary/` - 任务队列汇总
+
+### 4.9 错误码
 | 状态码 | 说明 |
 |--------|------|
 | 200 | 成功 |
@@ -152,7 +169,7 @@ Task: pending → running → success/failed
 
 ```
 /login                    - 登录页
-/dashboard                - 数据看板（首页）
+/                         - 书稿工作台（首页，独立全屏，双模式：home/workspace）
 /inspirations             - 创意库
 /novels                   - 小说项目列表
 /novels/:id               - 单个小说详情
@@ -161,13 +178,31 @@ Task: pending → running → success/failed
 /novels/:id/chapters/:id/edit   - 编辑章节
 /novels/:id/chapters/:id/preview - 预览章节
 /tasks                    - 任务监控
+/analytics                - 数据分析（统计面板 + 章节表 + 角色关系图）
 /stats                    - 数据统计报表
 /settings                 - 系统设置
 ```
 
 ### 5.2 核心页面设计
 
-**Dashboard**: 统计卡片（项目数、章节数、总字数、今日新增）+ ECharts 趋势图
+**书稿工作台 (Dashboard)**: 双模式全屏页面
+- **Home 模式**: 渐变 Banner + 左侧数据概览（总书数/章节/字数）+ 新建书目（灵感输入 → 建档 → 12步向导）+ 我的书目（3列网格卡片）
+- **Workspace 模式**: 三栏布局（左侧书库树 + 中央写作控制台 + 右侧知识图谱）
+
+**新书设置向导**: 12步 AI 流水线 Modal 向导
+- 步骤: 世界观 → 人物 → 地图 → 故事线 → 情节弧 → 开始 → 维度框架 → 主要角色 → 地图系统 → 主线支线 → 剧情抽离 → 进入工作台
+- 前 11 步：进入每步时**自动触发 AI 生成**（调用 FastAPI），生成中显示 loading
+- 用户审核/编辑 AI 输出，可从快速预设替换内容
+- 点"下一步"保存当前步骤到 NovelSetting 并触发下一步生成
+- 前序步骤已保存的内容作为上下文传递给后续步骤的 AI 生成
+- 第 12 步"进入工作台"：展示所有 11 步设定总览，确认后调用 complete-wizard 进入 Workspace
+
+**数据分析 (Analytics)**: 统计面板
+- 顶部 Banner: 总字数、章节数、发布率、今日新增
+- 章节数据表格（支持按项目筛选）
+- 角色关系力导向图（ECharts graph）
+- 7日趋势折线图
+
 **章节编辑**: Markdown 编辑器 + 实时字数统计 + 人工审核提示（>15% 修改率）
 
 ### 5.3 状态管理

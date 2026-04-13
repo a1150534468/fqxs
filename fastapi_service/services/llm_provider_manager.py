@@ -1,5 +1,6 @@
+import json
 import logging
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 import httpx
 
@@ -114,6 +115,83 @@ class LLMProviderManager:
             data = response.json()
 
         return data['choices'][0]['message']['content']
+
+    async def call_llm_stream(
+        self,
+        system_message: str,
+        user_message: str,
+        providers: list,
+        temperature: float = 0.8,
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[str]:
+        """Stream delta chunks from LLM with provider fallback."""
+        if not providers:
+            raise ValueError('No LLM providers available')
+
+        last_error = None
+        for provider in providers:
+            try:
+                logger.info(f"Streaming from provider: {provider['name']}")
+                async for chunk in self._call_single_provider_stream(
+                    provider=provider,
+                    system_message=system_message,
+                    user_message=user_message,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ):
+                    yield chunk
+                return
+            except Exception as e:
+                logger.warning(f"Stream provider {provider['name']} failed: {e}")
+                last_error = e
+                continue
+
+        raise Exception(f'All LLM providers failed streaming. Last error: {last_error}')
+
+    async def _call_single_provider_stream(
+        self,
+        provider: dict,
+        system_message: str,
+        user_message: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[str]:
+        """Stream from a single OpenAI-compatible provider."""
+        api_url = provider['api_url'].rstrip('/')
+        api_key = provider['api_key']
+        model = provider.get('model', 'gpt-3.5-turbo')
+
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        }
+        body = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system_message},
+                {'role': 'user', 'content': user_message},
+            ],
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'stream': True,
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream('POST', f'{api_url}/chat/completions', headers=headers, json=body) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith('data: '):
+                        continue
+                    payload = line[6:]
+                    if payload.strip() == '[DONE]':
+                        return
+                    try:
+                        data = json.loads(payload)
+                        delta = data['choices'][0].get('delta', {}).get('content', '')
+                        if delta:
+                            yield delta
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
 
 
 llm_provider_manager = LLMProviderManager()
