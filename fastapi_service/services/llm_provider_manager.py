@@ -183,7 +183,7 @@ class LLMProviderManager:
             'stream': True,
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             async with client.stream('POST', f'{api_url}/chat/completions', headers=headers, json=body) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():

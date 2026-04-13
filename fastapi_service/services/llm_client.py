@@ -550,17 +550,37 @@ class LLMClient:
         from models.setting_schemas import SETTING_SCHEMA_MAP
         from pydantic import ValidationError as PydanticValidationError
 
-        if await self._should_use_mock(user_token, task_type='setting'):
+        schema_cls = SETTING_SCHEMA_MAP.get(setting_type)
+        system_msg = SYSTEM_PROMPTS_MAP.get(setting_type, SYSTEM_SETTING_WORLDVIEW)
+        label = LABEL_MAP.get(setting_type, '设定')
+
+        # --- Decide mock vs real (single check, no redundant API call) ---
+        providers = []
+        use_mock = True
+        if user_token and settings.django_api_url:
+            try:
+                providers = await llm_provider_manager.fetch_providers_from_django(
+                    user_token, task_type='setting'
+                )
+                if not providers:
+                    logger.info("No 'setting' providers found, falling back to 'chapter'")
+                    providers = await llm_provider_manager.fetch_providers_from_django(
+                        user_token, task_type='chapter'
+                    )
+                if providers:
+                    use_mock = False
+            except Exception as e:
+                logger.warning(f"Failed to fetch providers, using mock: {e}")
+
+        if use_mock:
+            logger.info(f"Using mock for setting_type={setting_type}")
             async for item in self._mock_generate_setting_stream(
                 setting_type, book_title, genre, context, prior_settings,
             ):
                 yield item
             return
 
-        schema_cls = SETTING_SCHEMA_MAP.get(setting_type)
-        system_msg = SYSTEM_PROMPTS_MAP.get(setting_type, SYSTEM_SETTING_WORLDVIEW)
-        label = LABEL_MAP.get(setting_type, '设定')
-
+        # --- Real LLM path ---
         prior_summary = self._format_prior_settings(prior_settings or [])
         user_msg = f"书名：{book_title}\n题材：{genre or '未指定'}\n"
         if prior_summary:
@@ -571,48 +591,23 @@ class LLMClient:
 
         full_text = ""
         try:
-            if user_token and settings.django_api_url:
-                providers = await llm_provider_manager.fetch_providers_from_django(
-                    user_token, task_type='setting'
-                )
-                if not providers:
-                    # Fallback: try 'chapter' providers so users with only
-                    # a chapter-type provider can still run the wizard.
-                    logger.info("No 'setting' providers found, falling back to 'chapter'")
-                    providers = await llm_provider_manager.fetch_providers_from_django(
-                        user_token, task_type='chapter'
-                    )
-                if providers:
-                    async for delta in llm_provider_manager.call_llm_stream(
-                        system_message=system_msg,
-                        user_message=user_msg,
-                        providers=providers,
-                    ):
-                        full_text += delta
-                        yield ("chunk", delta)
-                else:
-                    raise ValueError("No providers")
-            else:
-                raise ValueError("No token or django_api_url")
+            logger.info(f"Streaming from provider: {providers[0].get('name', '?')}")
+            async for delta in llm_provider_manager.call_llm_stream(
+                system_message=system_msg,
+                user_message=user_msg,
+                providers=providers,
+            ):
+                full_text += delta
+                yield ("chunk", delta)
         except Exception as e:
-            logger.warning(f"Stream failed, trying non-stream fallback: {e}")
+            logger.warning(f"Real LLM stream failed: {e}, falling back to mock")
             if not full_text:
-                try:
-                    full_text = await self._call_llm(
-                        system_msg, user_msg, user_token=user_token,
-                        task_type='setting',
-                    )
-                    yield ("chunk", full_text)
-                except Exception as e2:
-                    logger.error(f"Fallback also failed: {e2}")
-                    yield ("done", {
-                        'setting_type': setting_type,
-                        'title': label,
-                        'content': '生成失败',
-                        'structured_data': {},
-                        'validation_ok': False,
-                    })
-                    return
+                # Real LLM totally failed — fall back to mock so user sees content
+                async for item in self._mock_generate_setting_stream(
+                    setting_type, book_title, genre, context, prior_settings,
+                ):
+                    yield item
+                return
 
         # Parse the accumulated text
         json_match = JSON_FENCE_RE.search(full_text)

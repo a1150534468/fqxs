@@ -86,6 +86,8 @@ export function useSettingStream() {
             if (msg.type === 'chunk') {
               accumulatedRef.current += msg.content;
               setStreamingText(accumulatedRef.current);
+            } else if (msg.type === 'status') {
+              console.log('[useSettingStream] status:', msg.message);
             } else if (msg.type === 'done') {
               console.log('[useSettingStream] done, validation_ok:', msg.validation_ok);
               const res: SettingStreamResult = {

@@ -73,6 +73,12 @@ async def ws_generate_setting(websocket: WebSocket):
                 f"has_token={bool(token)}"
             )
 
+            # Notify client that processing has started
+            await _safe_send(websocket, {
+                "type": "status",
+                "message": f"正在生成{setting_type}...",
+            })
+
             try:
                 async for kind, data in llm_client.generate_setting_stream(
                     setting_type=setting_type,
