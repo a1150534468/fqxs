@@ -31,6 +31,16 @@ const pickArray = (response: any): any[] => {
 
 const FINAL_STEP_INDEX = wizardSteps.length - 1; // 6 (进入工作台)
 
+const stepDescriptions = [
+  '搭建故事世界的 8 维度：时间、地点、社会、文化、科技、力量、历史、自然法则。',
+  '定义主要角色、性格、动机与关系网络。',
+  '规划关键地点、区域连接与空间布局。',
+  '梳理主线与支线剧情走向。',
+  '起承转合的节奏与冲突推进。',
+  '确定故事开篇场景与切入视角。',
+  '确认全部设定并正式进入写作工作台。',
+];
+
 export const NewBookWizard = ({
   open,
   onClose,
@@ -294,23 +304,6 @@ export const NewBookWizard = ({
     if (WIZARD_STEP_TYPES.length === 0) return 0;
     return Math.round((savedKeys.size / WIZARD_STEP_TYPES.length) * 100);
   }, [savedKeys]);
-
-  const stepItems = useMemo(
-    () =>
-      wizardSteps.map((title, idx) => {
-        const type = WIZARD_STEP_TYPES[idx];
-        const saved = savedKeys.has(type);
-        return {
-          title,
-          subTitle: saved ? (
-            <span className="text-xs text-emerald-500">已保存</span>
-          ) : (
-            <span className="text-xs text-gray-400">待生成</span>
-          ),
-        };
-      }),
-    [savedKeys],
-  );
 
   const previewMarkdown = isStreaming ? streamingText : currentContent;
   const canProceed = !isStreaming && (!!currentContent || isFinalStep);
@@ -653,22 +646,61 @@ export const NewBookWizard = ({
           </Tag>
         </div>
         <div className="flex flex-col xl:flex-row gap-4 h-[74vh]">
-          <aside className="w-full xl:w-72 flex-shrink-0">
+          <aside className="w-full xl:w-72 flex-shrink-0 h-full">
             <div className="rounded-3xl border bg-white h-full p-4 flex flex-col">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-medium text-slate-800">步骤导航</span>
                 <Tag color={completionRate >= 80 ? 'green' : 'blue'}>{completionRate}%</Tag>
               </div>
-              <Steps
-                orientation="vertical"
-                size="small"
-                current={step}
-                onChange={(value) => setStep(value)}
-                items={stepItems}
-                className="flex-1 pr-1 overflow-y-auto"
-              />
+              <div className="flex-1 overflow-y-auto pr-1 space-y-1">
+                {wizardSteps.map((title, idx) => {
+                  const type = WIZARD_STEP_TYPES[idx];
+                  const saved = savedKeys.has(type);
+                  const active = idx === step;
+                  const done = idx < step || saved;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setStep(idx)}
+                      className={`w-full text-left rounded-xl px-3 py-2 transition-colors ${
+                        active
+                          ? 'bg-indigo-50 border border-indigo-200'
+                          : 'hover:bg-slate-50 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center flex-shrink-0 ${
+                            active
+                              ? 'bg-indigo-500 text-white'
+                              : done
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-gray-200 text-gray-500'
+                          }`}
+                        >
+                          {done && !active ? '✓' : idx + 1}
+                        </span>
+                        <span
+                          className={`text-sm font-medium ${
+                            active ? 'text-indigo-700' : 'text-slate-700'
+                          }`}
+                        >
+                          {title}
+                        </span>
+                        {saved && !active && (
+                          <span className="text-[10px] text-emerald-500 ml-auto">已保存</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-snug mt-1 ml-7">
+                        {stepDescriptions[idx]}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
               <div className="pt-4 space-y-2 text-xs text-gray-500">
-                <p>提示：每步进入时将自动通过 WebSocket 流式生成内容；可随时点击重新生成。</p>
+                <p>每步自动 AI 生成；可随时重新生成。</p>
                 <Button
                   block
                   size="small"
