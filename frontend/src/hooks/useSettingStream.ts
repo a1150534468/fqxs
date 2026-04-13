@@ -21,6 +21,7 @@ export function useSettingStream() {
   const accumulatedRef = useRef('');
 
   const stop = useCallback(() => {
+    console.log('[useSettingStream] stop() called, hasWs:', !!wsRef.current);
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -47,6 +48,7 @@ export function useSettingStream() {
 
         // Close previous connection
         if (wsRef.current) {
+          console.warn('[useSettingStream] Closing previous WebSocket before opening new one');
           wsRef.current.close();
           wsRef.current = null;
         }
@@ -63,9 +65,21 @@ export function useSettingStream() {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
 
+        // Log readyState transitions
+        const logState = (tag: string) =>
+          console.log(`[useSettingStream] ${tag} readyState=${ws.readyState} wsRef.current===ws: ${wsRef.current === ws}`);
+
         ws.onopen = () => {
-          console.log('[useSettingStream] WebSocket connected');
+          logState('onopen');
+          // Check if ws was already replaced (race condition)
+          if (wsRef.current !== ws) {
+            console.warn('[useSettingStream] WS replaced before onopen fired! Closing stale connection.');
+            ws.close();
+            safeResolve(null);
+            return;
+          }
           const token = useAuthStore.getState().token;
+          console.log('[useSettingStream] token present:', !!token);
           const payload = {
             action: 'generate',
             token: token || '',
@@ -76,10 +90,19 @@ export function useSettingStream() {
             prior_settings: params.prior_settings || [],
           };
           console.log('[useSettingStream] sending:', params.setting_type, 'book:', params.book_title);
-          ws.send(JSON.stringify(payload));
+          try {
+            ws.send(JSON.stringify(payload));
+            logState('after send');
+          } catch (e) {
+            console.error('[useSettingStream] send() threw:', e);
+            setError('发送消息失败');
+            setIsStreaming(false);
+            safeResolve(null);
+          }
         };
 
         ws.onmessage = (event) => {
+          logState('onmessage');
           try {
             const msg = JSON.parse(event.data);
 

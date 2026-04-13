@@ -17,6 +17,7 @@ Protocol:
     {"type": "done", "setting_type": "...", ...}    # final
     {"type": "error", "message": "..."}             # on error
 """
+import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -43,14 +44,30 @@ async def _safe_send(websocket: WebSocket, data: dict) -> bool:
 @router.websocket("/ws/generate-setting")
 async def ws_generate_setting(websocket: WebSocket):
     await websocket.accept()
+    print("[WS] Connection accepted", flush=True)
     try:
         while True:
-            payload = await websocket.receive_json()
-
-            if payload.get("action") != "generate":
+            print("[WS] Waiting for message...", flush=True)
+            # Use receive_text + json.loads to debug parse issues
+            raw = await websocket.receive_text()
+            print(f"[WS] Raw message ({len(raw)} bytes): {raw[:200]}", flush=True)
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as e:
+                print(f"[WS] JSON parse error: {e}", flush=True)
                 await _safe_send(websocket, {
                     "type": "error",
-                    "message": f"Unknown action: {payload.get('action')}",
+                    "message": f"Invalid JSON: {e}",
+                })
+                continue
+
+            action = payload.get("action")
+            print(f"[WS] Parsed: action={action}, type={payload.get('setting_type')}, book={payload.get('book_title')}", flush=True)
+
+            if action != "generate":
+                await _safe_send(websocket, {
+                    "type": "error",
+                    "message": f"Unknown action: {action}",
                 })
                 continue
 
@@ -68,18 +85,18 @@ async def ws_generate_setting(websocket: WebSocket):
             context = payload.get("context", "")
             prior_settings = payload.get("prior_settings") or []
 
-            logger.info(
-                f"WS generate-setting: type={setting_type}, book={book_title}, "
-                f"has_token={bool(token)}"
-            )
+            print(f"[WS] Starting generation: type={setting_type}, book={book_title}, has_token={bool(token)}", flush=True)
 
             # Notify client that processing has started
-            await _safe_send(websocket, {
+            if not await _safe_send(websocket, {
                 "type": "status",
                 "message": f"正在生成{setting_type}...",
-            })
+            }):
+                print("[WS] Client gone before generation started", flush=True)
+                return
 
             try:
+                chunk_count = 0
                 async for kind, data in llm_client.generate_setting_stream(
                     setting_type=setting_type,
                     book_title=book_title,
@@ -89,26 +106,31 @@ async def ws_generate_setting(websocket: WebSocket):
                     user_token=token,
                 ):
                     if kind == "chunk":
+                        chunk_count += 1
                         if not await _safe_send(websocket, {
                             "type": "chunk",
                             "content": data,
                         }):
-                            logger.info("WS client gone during streaming, stopping")
+                            print(f"[WS] Client gone after {chunk_count} chunks", flush=True)
                             return
                     elif kind == "done":
+                        print(f"[WS] Done after {chunk_count} chunks, sending result", flush=True)
                         await _safe_send(websocket, {
                             "type": "done",
                             **data,
                         })
             except Exception as e:
-                logger.exception(f"WS generate-setting failed: {e}")
+                print(f"[WS] Generation error: {type(e).__name__}: {e}", flush=True)
                 await _safe_send(websocket, {
                     "type": "error",
                     "message": str(e),
                 })
 
     except WebSocketDisconnect:
-        logger.info("WS client disconnected")
+        print("[WS] Client disconnected (WebSocketDisconnect)", flush=True)
     except Exception as e:
-        logger.exception(f"WS unexpected error: {e}")
-        await _safe_send(websocket, {"type": "error", "message": str(e)})
+        print(f"[WS] Unexpected error: {type(e).__name__}: {e}", flush=True)
+        try:
+            await _safe_send(websocket, {"type": "error", "message": str(e)})
+        except Exception:
+            pass

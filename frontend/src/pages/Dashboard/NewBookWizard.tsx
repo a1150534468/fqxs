@@ -126,6 +126,7 @@ export const NewBookWizard = ({
   // Reset on close
   useEffect(() => {
     if (!open) {
+      console.log('[Wizard] reset effect: open=false, stopping');
       setStep(0);
       setSettings({});
       setStepContent({});
@@ -206,18 +207,24 @@ export const NewBookWizard = ({
     [generate, pendingTitle, buildContextString, buildPriorSettings],
   );
 
+  // Keep a stable ref to runGenerate so the auto-generate effect
+  // doesn't re-fire when runGenerate's dependencies change.
+  const runGenerateRef = useRef(runGenerate);
+  runGenerateRef.current = runGenerate;
+
   // Auto-generate on entering a non-final step that has no content yet
   useEffect(() => {
     if (!open || loadingExisting) return;
     if (isFinalStep) return;
     if (!draftId) return;
+    if (isStreaming) return;
     const type = WIZARD_STEP_TYPES[step];
     if (!type) return;
     if (stepContent[type]) return;
     if (autoGenTriggered.current[type]) return;
     autoGenTriggered.current[type] = true;
-    void runGenerate(step);
-  }, [open, loadingExisting, isFinalStep, draftId, step, stepContent, runGenerate]);
+    void runGenerateRef.current(step);
+  }, [open, loadingExisting, isFinalStep, draftId, step, stepContent, isStreaming]);
 
   const handleManualGenerate = async () => {
     if (!currentType) return;
