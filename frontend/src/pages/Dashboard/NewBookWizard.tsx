@@ -3,7 +3,7 @@ import { Button, Empty, Input, Modal, Spin, Steps, Tag, Tooltip, Progress, messa
 import { ThunderboltOutlined, PauseOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import MDEditor from '@uiw/react-md-editor';
 import ReactECharts from 'echarts-for-react';
-import { wizardSteps, WIZARD_STEP_TYPES, STEP_PRESETS } from './constants';
+import { wizardSteps, WIZARD_STEP_TYPES } from './constants';
 import {
   getDraftSettings,
   saveDraftStep,
@@ -29,7 +29,7 @@ const pickArray = (response: any): any[] => {
   return [];
 };
 
-const FINAL_STEP_INDEX = wizardSteps.length - 1; // 11 (进入工作台)
+const FINAL_STEP_INDEX = wizardSteps.length - 1; // 6 (进入工作台)
 
 export const NewBookWizard = ({
   open,
@@ -60,7 +60,6 @@ export const NewBookWizard = ({
   const isFinalStep = step === FINAL_STEP_INDEX;
   const currentType = !isFinalStep ? WIZARD_STEP_TYPES[step] : '';
   const currentLabel = wizardSteps[step];
-  const currentPresets = STEP_PRESETS[currentLabel] || [];
   const currentContent = currentType ? stepContent[currentType] ?? '' : '';
   const currentTitle = currentType ? stepTitles[currentType] ?? '' : '';
   const currentStructured = currentType ? stepStructured[currentType] ?? {} : {};
@@ -232,20 +231,6 @@ export const NewBookWizard = ({
     await runGenerate(step);
   };
 
-  const handlePresetClick = (preview: string, title: string) => {
-    if (!currentType) return;
-    setStepContent((prev) => ({
-      ...prev,
-      [currentType]: prev[currentType]
-        ? `${prev[currentType]}\n\n${preview}`
-        : preview,
-    }));
-    setStepTitles((prev) => ({
-      ...prev,
-      [currentType]: prev[currentType] || title,
-    }));
-  };
-
   const persistCurrent = async (): Promise<boolean> => {
     if (!draftId || !currentType) return true;
     const contentValue = (stepContent[currentType] ?? '').trim();
@@ -363,7 +348,7 @@ export const NewBookWizard = ({
       { key: 'natural_laws', label: '自然法则', hint: '物理规律 / 运行铁律' },
     ];
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-3">
         {dims.map((d) => (
           <div key={d.key} className="bg-slate-50 rounded-2xl p-3 border border-slate-100">
             <div className="flex items-center justify-between mb-1">
@@ -421,34 +406,40 @@ export const NewBookWizard = ({
     };
     return (
       <div className="space-y-3">
-        <ReactECharts option={option} style={{ height: 280 }} />
-        <div className="space-y-2 max-h-48 overflow-auto pr-1">
-          {regions.map((r, idx) => (
-            <div key={idx} className="border border-slate-200 rounded-xl p-2 bg-white">
-              <Input
-                size="small"
-                value={r.name || ''}
-                onChange={(e) => {
-                  const next = [...regions];
-                  next[idx] = { ...next[idx], name: e.target.value };
-                  updateStructuredField('regions', next);
-                }}
-                placeholder="地区名"
-                className="mb-1"
-              />
-              <TextArea
-                size="small"
-                autoSize={{ minRows: 1, maxRows: 3 }}
-                value={r.description || ''}
-                onChange={(e) => {
-                  const next = [...regions];
-                  next[idx] = { ...next[idx], description: e.target.value };
-                  updateStructuredField('regions', next);
-                }}
-                placeholder="地区描述"
-              />
-            </div>
-          ))}
+        <div className="bg-indigo-50 rounded-2xl p-3 border border-indigo-100">
+          <p className="text-xs font-medium text-indigo-600 mb-1">知识图谱</p>
+          <ReactECharts option={option} style={{ height: 280 }} />
+        </div>
+        <div className="bg-white rounded-2xl p-3 border border-slate-200">
+          <p className="text-xs font-medium text-gray-600 mb-1">结构化编辑</p>
+          <div className="space-y-2 max-h-48 overflow-auto pr-1">
+            {regions.map((r, idx) => (
+              <div key={idx} className="border border-slate-200 rounded-xl p-2 bg-slate-50">
+                <Input
+                  size="small"
+                  value={r.name || ''}
+                  onChange={(e) => {
+                    const next = [...regions];
+                    next[idx] = { ...next[idx], name: e.target.value };
+                    updateStructuredField('regions', next);
+                  }}
+                  placeholder="地区名"
+                  className="mb-1"
+                />
+                <TextArea
+                  size="small"
+                  autoSize={{ minRows: 1, maxRows: 3 }}
+                  value={r.description || ''}
+                  onChange={(e) => {
+                    const next = [...regions];
+                    next[idx] = { ...next[idx], description: e.target.value };
+                    updateStructuredField('regions', next);
+                  }}
+                  placeholder="地区描述"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -462,7 +453,7 @@ export const NewBookWizard = ({
     return (
       <div className="space-y-3">
         <Steps
-          orientation="horizontal"
+          orientation="vertical"
           current={acts.length}
           items={acts.map((a: any, idx: number) => ({
             title: a.name || `第${idx + 1}幕`,
@@ -513,7 +504,7 @@ export const NewBookWizard = ({
       return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待 AI 生成角色" />;
     }
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-96 overflow-auto pr-1">
+      <div className="space-y-2 max-h-64 overflow-auto pr-1">
         {list.map((c, idx) => (
           <div key={idx} className="border border-slate-200 rounded-xl p-3 bg-white">
             <div className="flex items-center justify-between mb-2">
@@ -548,12 +539,82 @@ export const NewBookWizard = ({
     );
   };
 
+  const renderCharacterRelationshipGraph = () => {
+    const list: any[] = Array.isArray(currentStructured.characters)
+      ? currentStructured.characters
+      : [];
+    if (list.length < 2) return null;
+
+    const colorMap: Record<string, string> = {
+      '正': '#22c55e',
+      '中': '#3b82f6',
+      '邪': '#ef4444',
+    };
+    const sizeMap: Record<string, number> = {
+      '主角': 50,
+      '反派': 38,
+    };
+
+    const protagonist = list.find((c) => c.role === '主角') || list[0];
+
+    const nodes = list.map((c) => {
+      const alignment = (c.alignment || '中')[0];
+      return {
+        name: c.name || '未命名',
+        symbolSize: sizeMap[c.role] || 28,
+        itemStyle: { color: colorMap[alignment] || '#3b82f6' },
+        tooltip: {
+          formatter: () =>
+            `${c.name || '未命名'}<br/>角色: ${c.role || '未定'}<br/>${c.brief || c.motivation || ''}`,
+        },
+      };
+    });
+
+    const links = list
+      .filter((c) => c.name !== protagonist.name)
+      .map((c) => ({
+        source: c.name || '未命名',
+        target: protagonist.name || '未命名',
+        label: { show: true, formatter: () => c.role || '' },
+      }));
+
+    const option = {
+      tooltip: {},
+      series: [
+        {
+          type: 'graph',
+          layout: 'force',
+          roam: true,
+          label: { show: true, color: '#1e293b', fontSize: 11 },
+          force: { repulsion: 300, edgeLength: [80, 160] },
+          data: nodes,
+          links,
+          lineStyle: { color: '#c4b5fd', width: 1.2, curveness: 0.15 },
+        },
+      ],
+    };
+
+    return (
+      <div className="mt-3">
+        <p className="text-xs font-medium text-gray-500 mb-1">角色关系图</p>
+        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-2">
+          <ReactECharts option={option} style={{ height: 260 }} />
+        </div>
+      </div>
+    );
+  };
+
   const renderStructuredEditor = () => {
     if (currentType === 'worldview') return renderWorldviewCards();
     if (currentType === 'map') return renderMapGraph();
     if (currentType === 'plot_arc') return renderPlotArcSteps();
-    if (currentType === 'characters' || currentType === 'main_characters') {
-      return renderCharacterCards();
+    if (currentType === 'characters') {
+      return (
+        <>
+          {renderCharacterCards()}
+          {renderCharacterRelationshipGraph()}
+        </>
+      );
     }
     // fallback: plain textarea on content
     return (
@@ -664,7 +725,7 @@ export const NewBookWizard = ({
                 </div>
               ) : (
                 <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-                  <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col min-w-0">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-gray-700">AI 实时输出</p>
@@ -700,7 +761,7 @@ export const NewBookWizard = ({
                         </Button>
                       </div>
                     </div>
-                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap" data-color-mode="light">
+                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap min-w-0 [&_pre]:overflow-x-auto [&_pre]:max-w-full" data-color-mode="light" style={{ wordBreak: 'break-word' }}>
                       {streamError && !isStreaming ? (
                         <div className="flex flex-col items-center justify-center h-full gap-2">
                           <p className="text-red-500 text-sm">{streamError}</p>
@@ -719,24 +780,12 @@ export const NewBookWizard = ({
                         <MDEditor.Markdown source={previewMarkdown} style={{ background: 'transparent' }} />
                       ) : (
                         <p className="text-xs text-gray-400">
-                          进入本步后将自动基于前序设定生成建议；也可点击右上角重新生成或使用下方预设。
+                          进入本步后将自动基于前序设定生成建议；也可点击右上角重新生成。
                         </p>
                       )}
                     </div>
-                    {currentPresets.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs text-gray-500 mb-2">快速选项</p>
-                        <div className="flex flex-wrap gap-2">
-                          {currentPresets.map((preset) => (
-                            <Button key={preset.title} size="small" onClick={() => handlePresetClick(preset.preview, preset.title)}>
-                              {preset.title}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                  <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                     <span className="text-sm font-medium text-gray-700 mb-2">结构化编辑</span>
                     <Input
                       placeholder={`${currentLabel}标题`}

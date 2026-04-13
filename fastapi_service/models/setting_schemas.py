@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for the 11 novel setting types.
+"""Pydantic v2 schemas for the 6 novel setting types.
 
 Each schema defines the structured JSON contract that the LLM must produce.
 Fields are deliberately lax (defaults everywhere) so minor LLM mistakes
@@ -8,9 +8,9 @@ Chinese name strings -- no IDs.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 
 # ------------------------------------------------------------------ #
@@ -101,123 +101,6 @@ class OpeningSchema(BaseModel):
 
 
 # ------------------------------------------------------------------ #
-# 7. dimension_framework
-# ------------------------------------------------------------------ #
-
-class TimeJump(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    from_: str = Field(default="", alias="from")
-    to: str = ""
-    purpose: str = ""
-
-
-class DimensionFrameworkSchema(BaseModel):
-    timeline_structure: str = ""
-    pov_mode: str = ""
-    pov_characters: List[str] = []
-    time_jumps: List[TimeJump] = []
-    narrative_devices: List[str] = []
-
-
-# ------------------------------------------------------------------ #
-# 8. main_characters (deep cards)
-# ------------------------------------------------------------------ #
-
-class Relationship(BaseModel):
-    target: str = ""
-    type: str = ""
-    dynamic: str = ""
-
-
-class DeepCharacter(BaseModel):
-    name: str = ""
-    motivation: str = ""
-    inner_conflict: str = ""
-    growth_arc: str = ""
-    backstory: str = ""
-    relationships: List[Relationship] = []
-
-
-class MainCharactersSchema(BaseModel):
-    characters: List[DeepCharacter] = []
-
-
-# ------------------------------------------------------------------ #
-# 9. map_system
-# ------------------------------------------------------------------ #
-
-class Faction(BaseModel):
-    name: str = ""
-    influence: str = ""
-    base: str = ""
-
-
-class RegionSystem(BaseModel):
-    name: str = ""
-    factions: List[Faction] = []
-    routes: List[str] = []
-    resources: List[str] = []
-    significance: str = ""
-
-
-class MapSystemSchema(BaseModel):
-    regions: List[RegionSystem] = []
-
-
-# ------------------------------------------------------------------ #
-# 10. main_sub_plots
-# ------------------------------------------------------------------ #
-
-class PlotEvent(BaseModel):
-    chapter_range: str = ""
-    event: str = ""
-    characters: List[str] = []
-
-
-class MainPlot(BaseModel):
-    theme: str = ""
-    events: List[PlotEvent] = []
-
-
-class SubPlot(BaseModel):
-    name: str = ""
-    characters: List[str] = []
-    events: List[PlotEvent] = []
-    crosses_main: str = ""
-
-
-class MainSubPlotsSchema(BaseModel):
-    main_plot: MainPlot = MainPlot()
-    sub_plots: List[SubPlot] = []
-
-
-# ------------------------------------------------------------------ #
-# 11. plot_extraction
-# ------------------------------------------------------------------ #
-
-class ExtractedAct(BaseModel):
-    name: str = ""
-    span: str = ""
-    summary: str = ""
-    turning_point: str = ""
-
-
-class KeyTurn(BaseModel):
-    chapter: int = 0
-    type: str = ""
-    description: str = ""
-
-
-class PlotExtractionSchema(BaseModel):
-    structure: str = ""
-    acts: List[ExtractedAct] = []
-    key_turns: List[KeyTurn] = []
-    pacing: str = ""
-    theme_distillation: str = ""
-
-
-# ------------------------------------------------------------------ #
 # Lookup map  setting_type str -> schema class
 # ------------------------------------------------------------------ #
 
@@ -228,9 +111,4 @@ SETTING_SCHEMA_MAP: dict[str, type[BaseModel]] = {
     'storyline': StorylineSchema,
     'plot_arc': PlotArcSchema,
     'opening': OpeningSchema,
-    'dimension_framework': DimensionFrameworkSchema,
-    'main_characters': MainCharactersSchema,
-    'map_system': MapSystemSchema,
-    'main_sub_plots': MainSubPlotsSchema,
-    'plot_extraction': PlotExtractionSchema,
 }

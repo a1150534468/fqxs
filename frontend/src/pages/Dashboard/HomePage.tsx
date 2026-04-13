@@ -41,7 +41,7 @@ export const HomePage = ({
     {
       id: 'init-ai',
       role: 'ai',
-      text: '已根据热点题材准备灵感模板，输入一句话即可拉起 12 步设定向导。',
+      text: '已根据热点题材准备灵感模板，输入一句话即可拉起 6 步设定向导。',
       timestamp: dayjs().subtract(2, 'minute').format('HH:mm'),
     },
   ]);
@@ -87,7 +87,7 @@ export const HomePage = ({
           <div>
             <p className="uppercase tracking-[0.55em] text-xs text-indigo-200">PlotPilot Studio</p>
             <h1 className="text-3xl font-semibold mt-3">书稿工作台</h1>
-            <p className="text-indigo-100 mt-2">从一句灵感到上架完稿，左侧导航随时召唤 12 步写作引擎。</p>
+            <p className="text-indigo-100 mt-2">从一句灵感到上架完稿，左侧导航随时召唤 6 步写作引擎。</p>
           </div>
           <div className="flex gap-4">
             <Button icon={<ThunderboltOutlined />} size="large" ghost>

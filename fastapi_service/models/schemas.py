@@ -49,9 +49,7 @@ class PriorSetting(APIBaseModel):
 
 class SettingGenerateRequest(APIBaseModel):
     setting_type: Literal[
-        'worldview', 'characters', 'map', 'storyline', 'plot_arc',
-        'opening', 'dimension_framework', 'main_characters',
-        'map_system', 'main_sub_plots', 'plot_extraction',
+        'worldview', 'characters', 'map', 'storyline', 'plot_arc', 'opening',
     ]
     book_title: str
     genre: str = ""

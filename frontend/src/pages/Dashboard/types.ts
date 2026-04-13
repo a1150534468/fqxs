@@ -26,11 +26,6 @@ export interface Chapter {
   updated_at?: string;
 }
 
-export interface WizardOption {
-  title: string;
-  preview: string;
-}
-
 export interface NovelSettingRecord {
   setting_type: string;
   title: string;

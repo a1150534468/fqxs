@@ -47,17 +47,6 @@ def build_graph_from_settings(settings_qs) -> tuple[list[dict], list[dict]]:
             for c in sd.get('characters', []):
                 add_node(c.get('name', ''), 'character', {'role': c.get('role', ''), 'brief': c.get('brief', '')})
 
-        # Deep characters — merge info and add relationships
-        if stype == 'main_characters':
-            for c in sd.get('characters', []):
-                name = c.get('name', '')
-                add_node(name, 'character', {'motivation': c.get('motivation', ''), 'growth_arc': c.get('growth_arc', '')})
-                for rel in c.get('relationships', []):
-                    target = rel.get('target', '')
-                    add_node(target, 'character')
-                    if name and target:
-                        add_link(f'character:{name}', f'character:{target}', rel.get('type', ''))
-
         # Map regions
         if stype == 'map':
             for r in sd.get('regions', []):
@@ -67,37 +56,6 @@ def build_graph_from_settings(settings_qs) -> tuple[list[dict], list[dict]]:
                     add_node(conn, 'region')
                     if name:
                         add_link(f'region:{name}', f'region:{conn}', '连接')
-
-        # Map system — factions + base region
-        if stype == 'map_system':
-            for r in sd.get('regions', []):
-                region_name = r.get('name', '')
-                add_node(region_name, 'region', {'significance': r.get('significance', '')})
-                for f in r.get('factions', []):
-                    fname = f.get('name', '')
-                    add_node(fname, 'faction', {'influence': f.get('influence', ''), 'base': f.get('base', '')})
-                    base = f.get('base', '')
-                    if base:
-                        add_node(base, 'region')
-                        add_link(f'faction:{fname}', f'region:{base}', '基地')
-
-        # Sub plots — link plots to characters
-        if stype == 'main_sub_plots':
-            main_plot = sd.get('main_plot', {})
-            main_theme = main_plot.get('theme', '主线')
-            if main_theme:
-                add_node(main_theme, 'plot', {'type': 'main', 'events_count': len(main_plot.get('events', []))})
-                for ev in main_plot.get('events', []):
-                    for ch in ev.get('characters', []):
-                        add_node(ch, 'character')
-                        add_link(f'plot:{main_theme}', f'character:{ch}', '参与')
-            for sp in sd.get('sub_plots', []):
-                sp_name = sp.get('name', '')
-                if sp_name:
-                    add_node(sp_name, 'plot', {'type': 'sub', 'crosses_main': sp.get('crosses_main', '')})
-                    for ch in sp.get('characters', []):
-                        add_node(ch, 'character')
-                        add_link(f'plot:{sp_name}', f'character:{ch}', '参与')
 
         # Opening — POV character link
         if stype == 'opening':

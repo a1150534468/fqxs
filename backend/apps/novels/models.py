@@ -79,11 +79,6 @@ class NovelSetting(models.Model):
         ('storyline', '故事线'),
         ('plot_arc', '情节弧'),
         ('opening', '开始'),
-        ('dimension_framework', '维度框架'),
-        ('main_characters', '主要角色'),
-        ('map_system', '地图系统'),
-        ('main_sub_plots', '主线支线'),
-        ('plot_extraction', '剧情抽离'),
     ]
 
     project = models.ForeignKey(

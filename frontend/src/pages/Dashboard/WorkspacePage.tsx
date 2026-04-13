@@ -299,7 +299,7 @@ export const WorkspacePage = ({
         <List
           size="small"
           dataSource={localSettings.slice(0, 5)}
-          locale={{ emptyText: '暂无设定，先通过向导完成 12 步。' }}
+          locale={{ emptyText: '暂无设定，先通过向导完成设定。' }}
           renderItem={(item) => (
             <List.Item
               className="cursor-pointer hover:bg-slate-50"

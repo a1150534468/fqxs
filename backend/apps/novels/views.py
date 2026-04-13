@@ -21,8 +21,7 @@ from celery_tasks.ai_tasks import generate_next_chapter_for_project
 
 WIZARD_ORDER = [
     'worldview', 'characters', 'map', 'storyline', 'plot_arc',
-    'opening', 'dimension_framework', 'main_characters',
-    'map_system', 'main_sub_plots', 'plot_extraction',
+    'opening',
 ]
 
 
@@ -304,7 +303,7 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
             },
         )
 
-        new_step = min(idx + 1, 11)
+        new_step = min(idx + 1, 6)
         if new_step > project.wizard_step:
             project.wizard_step = new_step
             project.save(update_fields=['wizard_step', 'updated_at'])
@@ -408,7 +407,7 @@ class DraftViewSet(viewsets.ModelViewSet):
             },
         )
 
-        new_step = min(idx + 1, 11)
+        new_step = min(idx + 1, 6)
         if new_step > draft.current_step:
             draft.current_step = new_step
             draft.save(update_fields=['current_step', 'updated_at'])
@@ -436,7 +435,7 @@ class DraftViewSet(viewsets.ModelViewSet):
             genre=draft.genre,
             synopsis=draft.inspiration,
             wizard_completed=True,
-            wizard_step=11,
+            wizard_step=6,
         )
 
         # Copy DraftSettings -> NovelSettings

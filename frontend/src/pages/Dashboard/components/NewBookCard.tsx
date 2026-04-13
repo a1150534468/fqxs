@@ -21,7 +21,7 @@ export const NewBookCard = ({ chatInput, setChatInput, onCreateProject, history 
     <div className="flex items-center justify-between mb-4">
       <div>
         <p className="text-sm text-gray-500">新建书目</p>
-        <h3 className="text-xl font-semibold text-gray-900">输入灵感 · 拉起 12 步向导</h3>
+        <h3 className="text-xl font-semibold text-gray-900">输入灵感 · 拉起 6 步向导</h3>
       </div>
       <Button type="link" onClick={onCreateProject}>
         高级设置
