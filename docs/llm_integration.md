@@ -100,7 +100,7 @@ API URL: https://dashscope.aliyuncs.com/compatible-mode/v1
 - **outline**: 大纲生成 - 根据创意生成小说大纲
 - **chapter**: 章节生成 - 根据大纲生成章节内容
 - **continue**: 内容续写 - 续写现有内容
-- **setting**: 设定生成 - 生成 11 种小说设定（世界观/人物/地图等）
+- **setting**: 设定生成 - 生成 6 种小说设定（世界观/人物/地图/故事线/情节弧/开始）
 
 可以为不同任务类型配置不同的 Provider，例如：
 - 大纲生成使用 GPT-4（更强的规划能力）
@@ -108,7 +108,7 @@ API URL: https://dashscope.aliyuncs.com/compatible-mode/v1
 
 ## 流式生成（WebSocket）
 
-12 步向导使用 WebSocket 流式生成设定内容，端点为 `ws://localhost:8001/ws/generate-setting`。
+6 步向导使用 WebSocket 流式生成设定内容，端点为 `ws://localhost:8001/ws/generate-setting`。
 
 ### 架构
 

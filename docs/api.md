@@ -449,9 +449,11 @@ Chapter endpoints add the following validation behavior:
 
 ---
 
-## Draft Endpoints (12-step Wizard)
+## Draft Endpoints (6-step Wizard)
 
-The draft flow lets a user walk through a 12-step wizard **without** creating a NovelProject upfront. A `NovelDraft` holds interim settings. When the wizard finishes, `complete` converts the draft into a full project.
+The draft flow lets a user walk through a 6-step wizard **without** creating a NovelProject upfront. A `NovelDraft` holds interim settings. When the wizard finishes, `complete` converts the draft into a full project.
+
+The 6 setting steps are: `worldview` / `characters` / `map` / `storyline` / `plot_arc` / `opening`. A 7th "进入工作台" step is the final confirmation.
 
 ### `POST /api/drafts/`
 
