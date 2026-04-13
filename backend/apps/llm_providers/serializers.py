@@ -40,3 +40,16 @@ class LLMProviderSerializer(serializers.ModelSerializer):
             api_key = validated_data.pop('api_key')
             instance.api_key = api_key
         return super().update(instance, validated_data)
+
+
+class LLMProviderInternalSerializer(serializers.ModelSerializer):
+    """Serializer for internal service-to-service calls. Exposes the real api_key."""
+
+    api_key = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = LLMProvider
+        fields = (
+            'id', 'name', 'provider_type', 'api_url', 'api_key',
+            'model', 'task_type', 'is_active', 'priority',
+        )

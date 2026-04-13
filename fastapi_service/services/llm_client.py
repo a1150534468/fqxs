@@ -441,14 +441,14 @@ class LLMClient:
     # Mock / real decision
     # ------------------------------------------------------------------
 
-    async def _should_use_mock(self, user_token: str | None) -> bool:
+    async def _should_use_mock(self, user_token: str | None, task_type: str = 'chapter') -> bool:
         if settings.mock_generation and not user_token:
             return True
         if not user_token:
             return True
         try:
             providers = await llm_provider_manager.fetch_providers_from_django(
-                user_token, task_type='chapter'
+                user_token, task_type=task_type
             )
             return not providers
         except Exception:
@@ -524,7 +524,7 @@ class LLMClient:
         prior_settings: list[dict] | None = None,
         user_token: str | None = None,
     ) -> dict:
-        if await self._should_use_mock(user_token):
+        if await self._should_use_mock(user_token, task_type='setting'):
             return await self._mock_generate_setting(
                 setting_type, book_title, genre, context, prior_settings,
             )
@@ -550,7 +550,7 @@ class LLMClient:
         from models.setting_schemas import SETTING_SCHEMA_MAP
         from pydantic import ValidationError as PydanticValidationError
 
-        if await self._should_use_mock(user_token):
+        if await self._should_use_mock(user_token, task_type='setting'):
             async for item in self._mock_generate_setting_stream(
                 setting_type, book_title, genre, context, prior_settings,
             ):
@@ -573,8 +573,15 @@ class LLMClient:
         try:
             if user_token and settings.django_api_url:
                 providers = await llm_provider_manager.fetch_providers_from_django(
-                    user_token, task_type='chapter'
+                    user_token, task_type='setting'
                 )
+                if not providers:
+                    # Fallback: try 'chapter' providers so users with only
+                    # a chapter-type provider can still run the wizard.
+                    logger.info("No 'setting' providers found, falling back to 'chapter'")
+                    providers = await llm_provider_manager.fetch_providers_from_django(
+                        user_token, task_type='chapter'
+                    )
                 if providers:
                     async for delta in llm_provider_manager.call_llm_stream(
                         system_message=system_msg,
@@ -591,7 +598,10 @@ class LLMClient:
             logger.warning(f"Stream failed, trying non-stream fallback: {e}")
             if not full_text:
                 try:
-                    full_text = await self._call_llm(system_msg, user_msg, user_token=user_token)
+                    full_text = await self._call_llm(
+                        system_msg, user_msg, user_token=user_token,
+                        task_type='setting',
+                    )
                     yield ("chunk", full_text)
                 except Exception as e2:
                     logger.error(f"Fallback also failed: {e2}")
@@ -792,6 +802,7 @@ class LLMClient:
             try:
                 response = await self._call_llm(
                     system_msg, user_msg, user_token=user_token,
+                    task_type='setting',
                 )
                 last_raw = response
                 json_match = JSON_FENCE_RE.search(response)
@@ -918,12 +929,13 @@ class LLMClient:
     async def _call_llm(
         self, system_message: str, user_message: str,
         user_token: str | None = None,
+        task_type: str = 'chapter',
     ) -> str:
         """Call LLM using provider manager or fallback to default settings."""
         if user_token and settings.django_api_url:
             try:
                 providers = await llm_provider_manager.fetch_providers_from_django(
-                    user_token, task_type='chapter'
+                    user_token, task_type=task_type
                 )
                 if providers:
                     return await llm_provider_manager.call_llm(

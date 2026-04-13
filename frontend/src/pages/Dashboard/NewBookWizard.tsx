@@ -691,7 +691,7 @@ export const NewBookWizard = ({
                         </Button>
                       </div>
                     </div>
-                    <div className="bg-slate-900 text-emerald-100 font-mono text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap">
+                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap" data-color-mode="light">
                       {isStreaming && !previewMarkdown ? (
                         <div className="flex items-center justify-center h-full">
                           <Spin tip={`正在生成${currentLabel}...`} />
@@ -699,7 +699,7 @@ export const NewBookWizard = ({
                       ) : previewMarkdown ? (
                         <MDEditor.Markdown source={previewMarkdown} style={{ background: 'transparent' }} />
                       ) : (
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-gray-400">
                           进入本步后将自动基于前序设定生成建议；也可点击右上角重新生成或使用下方预设。
                         </p>
                       )}

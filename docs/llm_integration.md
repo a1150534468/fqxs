@@ -60,6 +60,18 @@ uvicorn main:app --reload --port 8001
 3. 如果失败，自动切换到下一个 Provider
 4. 如果所有 Provider 都失败，返回错误
 
+### 任务类型回退
+
+设定生成（wizard）使用 `task_type='setting'` 查询 Provider。如果用户没有配置 `setting` 类型的 Provider，系统自动回退到 `chapter` 类型。这样只配一个 `chapter` Provider 即可同时支持章节生成和向导设定生成。
+
+### 内部接口 `for-generation`
+
+FastAPI 通过 `GET /api/llm-providers/for-generation/?task_type=setting` 获取 Provider 列表（含完整 api_key）。该接口：
+- 仅返回当前用户的 `is_active=True` 的 Provider
+- 返回扁平 JSON 列表（绕过 DRF 分页）
+- 由 JWT 保护，仅供 FastAPI 服务间调用
+- 支持 task_type 过滤，无匹配时回退到所有活跃 Provider
+
 ## 支持的 LLM Provider
 
 ### OpenAI

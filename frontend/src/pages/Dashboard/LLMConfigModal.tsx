@@ -189,6 +189,7 @@ export const LLMConfigModal: React.FC<LLMConfigModalProps> = ({ open, onClose })
           outline: '大纲生成',
           chapter: '章节生成',
           continue: '内容续写',
+          setting: '设定生成',
         };
         return typeMap[type] || type;
       },
@@ -332,6 +333,7 @@ export const LLMConfigModal: React.FC<LLMConfigModalProps> = ({ open, onClose })
               <Select.Option value="outline">大纲生成</Select.Option>
               <Select.Option value="chapter">章节生成</Select.Option>
               <Select.Option value="continue">内容续写</Select.Option>
+              <Select.Option value="setting">设定生成</Select.Option>
             </Select>
           </Form.Item>
 

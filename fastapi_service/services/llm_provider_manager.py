@@ -19,7 +19,7 @@ class LLMProviderManager:
         self.django_api_url = url
 
     async def fetch_providers_from_django(self, user_token: str, task_type: str = 'chapter') -> list:
-        """Fetch active LLM providers from Django API."""
+        """Fetch active LLM providers from Django API (with real api_key)."""
         if not self.django_api_url:
             logger.warning('Django API URL not configured')
             return []
@@ -27,12 +27,19 @@ class LLMProviderManager:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self.django_api_url.rstrip('/')}/api/llm-providers/",
+                    f"{self.django_api_url.rstrip('/')}/api/llm-providers/for-generation/",
                     headers={'Authorization': f'Bearer {user_token}'},
-                    params={'is_active': True, 'task_type': task_type},
+                    params={'task_type': task_type},
                 )
                 if response.status_code == 200:
-                    providers = response.json()
+                    data = response.json()
+                    # Handle both flat list and DRF paginated envelope
+                    if isinstance(data, dict) and 'results' in data:
+                        providers = data['results']
+                    elif isinstance(data, list):
+                        providers = data
+                    else:
+                        providers = []
                     # Sort by priority (descending)
                     providers.sort(key=lambda p: p.get('priority', 0), reverse=True)
                     logger.info(f'Fetched {len(providers)} providers for task_type={task_type}')

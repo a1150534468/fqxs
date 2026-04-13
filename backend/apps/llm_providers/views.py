@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.llm_providers.models import LLMProvider
-from apps.llm_providers.serializers import LLMProviderSerializer
+from apps.llm_providers.serializers import LLMProviderSerializer, LLMProviderInternalSerializer
 
 logger = logging.getLogger('apps')
 
@@ -19,11 +19,14 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
     permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
-        return (
-            LLMProvider.objects
-            .filter(user=self.request.user)
-            .order_by('-priority', 'created_at')
-        )
+        qs = LLMProvider.objects.filter(user=self.request.user)
+        task_type = self.request.query_params.get('task_type')
+        is_active = self.request.query_params.get('is_active')
+        if task_type:
+            qs = qs.filter(task_type=task_type)
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active in ('true', 'True', '1'))
+        return qs.order_by('-priority', 'created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -185,3 +188,23 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
             'status': 'success',
             'priority': new_priority,
         })
+
+    @action(detail=False, methods=['get'], url_path='for-generation')
+    def for_generation(self, request):
+        """Internal endpoint for FastAPI — returns full api_key for LLM calls.
+
+        Bypasses DRF pagination. Returns a flat JSON list.
+        Supports ?task_type= query param to filter by task type.
+        Falls back to all active providers if no match for the requested task_type.
+        """
+        qs = LLMProvider.objects.filter(user=request.user, is_active=True)
+        task_type = request.query_params.get('task_type')
+        if task_type:
+            filtered = qs.filter(task_type=task_type)
+            if not filtered.exists():
+                # Fallback: return any active provider
+                filtered = qs
+            qs = filtered
+        qs = qs.order_by('-priority', 'created_at')
+        serializer = LLMProviderInternalSerializer(qs, many=True)
+        return Response(serializer.data)

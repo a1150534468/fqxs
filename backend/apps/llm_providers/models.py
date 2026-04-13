@@ -16,6 +16,7 @@ class LLMProvider(models.Model):
         ('outline', '大纲生成'),
         ('chapter', '章节生成'),
         ('continue', '内容续写'),
+        ('setting', '设定生成'),
     ]
 
     user = models.ForeignKey(
