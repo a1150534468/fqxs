@@ -317,7 +317,7 @@ export const NewBookWizard = ({
         const saved = savedKeys.has(type);
         return {
           title,
-          description: saved ? (
+          subTitle: saved ? (
             <span className="text-xs text-emerald-500">已保存</span>
           ) : (
             <span className="text-xs text-gray-400">待生成</span>
@@ -462,11 +462,11 @@ export const NewBookWizard = ({
     return (
       <div className="space-y-3">
         <Steps
-          direction="horizontal"
+          orientation="horizontal"
           current={acts.length}
           items={acts.map((a: any, idx: number) => ({
             title: a.name || `第${idx + 1}幕`,
-            description: (
+            subTitle: (
               <span className="text-[11px] text-gray-500">
                 {(a.key_events || []).slice(0, 1).join(' · ')}
               </span>
@@ -599,7 +599,7 @@ export const NewBookWizard = ({
                 <Tag color={completionRate >= 80 ? 'green' : 'blue'}>{completionRate}%</Tag>
               </div>
               <Steps
-                direction="vertical"
+                orientation="vertical"
                 size="small"
                 current={step}
                 onChange={(value) => setStep(value)}
@@ -624,7 +624,7 @@ export const NewBookWizard = ({
             <div className="rounded-3xl border bg-white h-full p-4 flex flex-col">
               {loadingExisting ? (
                 <div className="flex items-center justify-center flex-1">
-                  <Spin tip="加载已保存内容..." />
+                  <Spin description="加载已保存内容..." />
                 </div>
               ) : isFinalStep ? (
                 <div className="flex flex-col h-full">
@@ -710,7 +710,7 @@ export const NewBookWizard = ({
                         </div>
                       ) : isStreaming && !previewMarkdown ? (
                         <div className="flex flex-col items-center justify-center h-full gap-2">
-                          <Spin tip={statusMessage || `正在生成${currentLabel}...`} />
+                          <Spin description={statusMessage || `正在生成${currentLabel}...`} />
                           {statusMessage && (
                             <p className="text-xs text-gray-400 mt-2 animate-pulse">{statusMessage}</p>
                           )}
