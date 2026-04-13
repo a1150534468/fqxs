@@ -446,3 +446,151 @@ Chapter endpoints add the following validation behavior:
 - `400 Bad Request` when `project_id` is missing or not owned by the current user
 - `400 Bad Request` for unsupported `publish_status` values
 - `400 Bad Request` when `chapter_number <= 0`
+
+---
+
+## Draft Endpoints (12-step Wizard)
+
+The draft flow lets a user walk through a 12-step wizard **without** creating a NovelProject upfront. A `NovelDraft` holds interim settings. When the wizard finishes, `complete` converts the draft into a full project.
+
+### `POST /api/drafts/`
+
+Create a new draft. Only `inspiration` is required.
+
+Request body:
+
+```json
+{
+  "inspiration": "末日里的修真少年",
+  "title": "可选暂定书名",
+  "genre": "仙侠"
+}
+```
+
+Response (`201 Created`):
+
+```json
+{
+  "id": 5,
+  "user": 1,
+  "inspiration": "末日里的修真少年",
+  "title": "",
+  "genre": "未分类",
+  "current_step": 0,
+  "is_completed": false,
+  "converted_project": null,
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+### `GET /api/drafts/`
+
+List all drafts for the authenticated user.
+
+### `GET /api/drafts/<id>/`
+
+Retrieve a single draft.
+
+### `PATCH /api/drafts/<id>/`
+
+Update draft fields (title, genre, current_step, etc.).
+
+### `DELETE /api/drafts/<id>/`
+
+Delete a draft.
+
+### `POST /api/drafts/<id>/save-step/`
+
+Create or update a `DraftSetting` for the given step.
+
+Request body:
+
+```json
+{
+  "setting_type": "worldview",
+  "title": "世界观",
+  "content": "Markdown content here...",
+  "structured_data": {
+    "time_setting": "远古纪元",
+    "place_setting": "九州大陆",
+    "social_structure": "...",
+    "cultural_background": "...",
+    "tech_level": "...",
+    "power_system": "...",
+    "history": "...",
+    "natural_laws": "..."
+  }
+}
+```
+
+Response (`200 OK`): returns the saved DraftSetting with `setting_type`, `title`, `content`, `structured_data`.
+
+### `GET /api/drafts/<id>/settings/`
+
+List all `DraftSetting` records for a draft.
+
+### `POST /api/drafts/<id>/complete/`
+
+Convert the draft into a `NovelProject`:
+
+1. Creates `NovelProject` with `title`, `genre`, `user`, `wizard_completed=True`
+2. Bulk-creates `NovelSetting` from each `DraftSetting`
+3. Marks `draft.is_completed = True`, sets `draft.converted_project`
+
+Response (`201 Created`): the newly created NovelProject serializer output.
+
+---
+
+## WebSocket: Stream Setting Generation
+
+**URL**: `ws://localhost:8001/ws/generate-setting` (FastAPI service)
+
+### Protocol
+
+Client sends (JSON):
+
+```json
+{
+  "action": "generate",
+  "token": "<JWT access token>",
+  "setting_type": "worldview",
+  "book_title": "末日修真",
+  "genre": "仙侠",
+  "context": "前序设定摘要...",
+  "prior_settings": []
+}
+```
+
+Server streams (JSON, one per message):
+
+```json
+{"type": "chunk", "content": "文字片段"}
+```
+
+(repeated many times)
+
+Server finishes:
+
+```json
+{
+  "type": "done",
+  "setting_type": "worldview",
+  "title": "世界观",
+  "content": "完整 Markdown 内容",
+  "structured_data": {"time_setting": "...", "place_setting": "...", ...},
+  "validation_ok": true
+}
+```
+
+Server error:
+
+```json
+{"type": "error", "message": "描述信息"}
+```
+
+### Notes
+
+- Token is validated by calling Django `/api/users/me/` with the provided JWT.
+- In mock mode, content is yielded character-by-character with ~30ms delay.
+- `validation_ok: false` means the LLM output couldn't be parsed into the expected Pydantic schema; the raw content is still returned.

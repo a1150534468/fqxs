@@ -82,16 +82,21 @@
 | User | 用户表 | username, email, password, is_staff |
 | LLMProvider | LLM 服务配置 | user_id, name, provider_type, api_url, api_key, task_type, priority |
 | Inspiration | 创意表 | source_url, title, synopsis, tags, hot_score, rank_type, is_used |
-| NovelProject | 小说项目表 | user_id, inspiration_id, title, genre, synopsis, outline, status, target_chapters, current_chapter, **wizard_completed**, **wizard_step** |
+| **NovelDraft** | **12 步向导草稿表（完成才转为 NovelProject）** | user_id, inspiration(text), title, genre, current_step(0-11), is_completed, converted_project_id |
+| **DraftSetting** | **草稿阶段设定** | draft_id, setting_type, title, content, structured_data(JSON), ai_generated, order |
+| NovelProject | 小说项目表 | user_id, inspiration_id, title, genre, synopsis, outline, status, target_chapters, current_chapter, wizard_completed, wizard_step |
 | NovelSetting | 小说设定表 | project_id, setting_type(worldview/characters/map/storyline/plot_arc/opening/dimension_framework/main_characters/map_system/main_sub_plots/plot_extraction), title, content, structured_data(JSON), ai_generated, order |
 | Chapter | 章节表 | project_id, chapter_number, title, raw_content, final_content, word_count, status, published_at |
 | Task | 任务表 | task_type, related_type, related_id, status, celery_task_id, params, result, error_message |
 | Stats | 统计表 | date, metric_type, metric_data |
 
+**世界观 8 维度 Schema（WorldviewSchema）**: `time_setting` / `place_setting` / `social_structure` / `cultural_background` / `tech_level` / `power_system` / `history` / `natural_laws` — 全部为字符串字段，存入 `NovelSetting.structured_data`。
+
 ### 3.2 状态流转
 
 ```
 Inspiration: collected → used
+NovelDraft: created → (12步 save-step) → completed (转为 NovelProject)
 NovelProject: active ←→ paused → completed/abandoned
               wizard_completed: false → true (向导完成后)
 Chapter: generating → pending_review → approved → published
@@ -133,15 +138,31 @@ Task: pending → running → success/failed
 - `POST /api/ai/generate/outline` - 生成大纲
 - `POST /api/ai/generate/chapter` - 生成章节
 - `POST /api/ai/continue` - 内容续写
-- `POST /api/ai/generate/setting` - 生成小说设定（世界观/人物/地图/故事线/情节弧）
+- `POST /api/ai/generate/setting` - 生成小说设定（非流式，11 种类型）
+- **`WebSocket /ws/generate-setting`** - **流式生成设定（前端首选）**
+  - 客户端发送: `{action:"generate", token, setting_type, book_title, genre, context, prior_settings}`
+  - 服务端流式推送: `{type:"chunk", content}` × N
+  - 服务端完成推送: `{type:"done", setting_type, title, content, structured_data, validation_ok}`
+  - 错误: `{type:"error", message}`
+  - Mock 模式下逐字 yield 模拟流式效果
 
-### 4.7 向导式建书
+### 4.7 向导式建书（草稿流程，推荐）
+- `POST /api/drafts/` - 创建草稿（仅需 inspiration 文本，**不创建 NovelProject**）
+- `GET /api/drafts/` - 我的草稿列表
+- `GET /api/drafts/<id>/` - 草稿详情
+- `PATCH /api/drafts/<id>/` - 更新草稿（title/genre/current_step）
+- `DELETE /api/drafts/<id>/` - 删除草稿
+- `POST /api/drafts/<id>/save-step/` - 保存某步设定到 DraftSetting
+- `GET /api/drafts/<id>/settings/` - 获取草稿所有设定
+- `POST /api/drafts/<id>/complete/` - **完成向导 → 创建 NovelProject + 批量复制 DraftSetting → NovelSetting**
+
+### 4.8 向导式建书（旧流程，已创建项目后的编辑）
 - `POST /api/novels/<id>/generate-setting/` - AI 生成指定类型的设定
 - `POST /api/novels/<id>/wizard-step/` - 保存向导单步数据到 NovelSetting
 - `GET /api/novels/<id>/settings/` - 获取项目所有设定
 - `POST /api/novels/<id>/complete-wizard/` - 完成向导，标记 wizard_completed
 
-### 4.8 数据分析
+### 4.9 数据分析
 - `GET /api/stats/overview/` - 首页概览（总书数、总章节、总字数、各状态书数、今日新增）
 - `GET /api/stats/chapter-analytics/` - 章节级分析（支持 project_id 筛选）
 - `GET /api/stats/character-graph/` - 角色关系图数据（nodes/links，从 NovelSetting 提取）
@@ -149,7 +170,7 @@ Task: pending → running → success/failed
 - `GET /api/stats/recent-generations/` - 最近 AI 生成记录
 - `GET /api/stats/tasks-summary/` - 任务队列汇总
 
-### 4.9 错误码
+### 4.10 错误码
 | 状态码 | 说明 |
 |--------|------|
 | 200 | 成功 |
@@ -189,13 +210,19 @@ Task: pending → running → success/failed
 - **Home 模式**: 渐变 Banner + 左侧数据概览（总书数/章节/字数）+ 新建书目（灵感输入 → 建档 → 12步向导）+ 我的书目（3列网格卡片）
 - **Workspace 模式**: 三栏布局（左侧书库树 + 中央写作控制台 + 右侧知识图谱）
 
-**新书设置向导**: 12步 AI 流水线 Modal 向导
+**新书设置向导**: 12步 AI 流水线 Modal 向导（**草稿模式**）
+- 流程: 输入灵感 → `POST /api/drafts/` 创建草稿（**不建项目**） → 进入 12 步 Wizard
 - 步骤: 世界观 → 人物 → 地图 → 故事线 → 情节弧 → 开始 → 维度框架 → 主要角色 → 地图系统 → 主线支线 → 剧情抽离 → 进入工作台
-- 前 11 步：进入每步时**自动触发 AI 生成**（调用 FastAPI），生成中显示 loading
-- 用户审核/编辑 AI 输出，可从快速预设替换内容
-- 点"下一步"保存当前步骤到 NovelSetting 并触发下一步生成
+- 前 11 步：进入每步时**自动触发 WebSocket 流式生成**（连接 FastAPI `/ws/generate-setting`），实时逐字显示
+- **世界观步骤**: 8 维度卡片网格（2×4），每张卡片对应一个维度（时间/地点/社会/文化/科技/力量/历史/自然法则），可逐一编辑
+- **地图步骤**: ECharts 力导向图可视化地区关系 + 编辑列表
+- **情节弧步骤**: 横向 Steps 步骤条展示各幕
+- **角色步骤**: 角色卡片列表，名字 + 角色 Tag + 简介
+- 用户审核/编辑 AI 输出后，点"下一步"保存到 `DraftSetting` 并前进
 - 前序步骤已保存的内容作为上下文传递给后续步骤的 AI 生成
-- 第 12 步"进入工作台"：展示所有 11 步设定总览，确认后调用 complete-wizard 进入 Workspace
+- 第 12 步"进入工作台"：展示所有 11 步设定总览，确认后调用 `POST /api/drafts/{id}/complete/` 创建 NovelProject
+
+**Workspace 右侧知识面板**: 世界观卡片/设定列表项可点击打开编辑 Drawer（SettingEditDrawer），支持 WS 流式重新生成与手动编辑保存
 
 **数据分析 (Analytics)**: 统计面板
 - 顶部 Banner: 总字数、章节数、发布率、今日新增

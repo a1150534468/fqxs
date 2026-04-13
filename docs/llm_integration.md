@@ -88,10 +88,45 @@ API URL: https://dashscope.aliyuncs.com/compatible-mode/v1
 - **outline**: 大纲生成 - 根据创意生成小说大纲
 - **chapter**: 章节生成 - 根据大纲生成章节内容
 - **continue**: 内容续写 - 续写现有内容
+- **setting**: 设定生成 - 生成 11 种小说设定（世界观/人物/地图等）
 
 可以为不同任务类型配置不同的 Provider，例如：
 - 大纲生成使用 GPT-4（更强的规划能力）
 - 章节生成使用 GPT-3.5（性价比高）
+
+## 流式生成（WebSocket）
+
+12 步向导使用 WebSocket 流式生成设定内容，端点为 `ws://localhost:8001/ws/generate-setting`。
+
+### 架构
+
+```
+前端 (browser)
+  │ WebSocket
+  ▼
+FastAPI (uvicorn) ─── stream=True ──→ LLM Provider API
+  │                                        │
+  │ ◄──── SSE delta chunks ────────────────┘
+  │
+  │  逐 chunk 发给前端 via ws.send_json()
+  ▼
+前端逐字渲染 (useSettingStream hook)
+```
+
+### 调用方式
+
+前端 hook: `useSettingStream()` → `generate({ setting_type, book_title, genre, context, prior_settings })`
+
+LLM 调用: `llm_provider_manager.call_llm_stream()` 使用 `httpx.AsyncClient.stream()` 解析 SSE delta 并逐 chunk yield。
+
+Mock 模式: `mock_generation=true` 时逐字符 yield 预设内容（~30ms/字），模拟流式效果。
+
+### 世界观 8 维度
+
+世界观步骤使用 `WorldviewSchema`，包含 8 个字符串字段：
+`time_setting` / `place_setting` / `social_structure` / `cultural_background` / `tech_level` / `power_system` / `history` / `natural_laws`
+
+LLM 被要求同时输出 Markdown 正文和 JSON 结构化数据，后端用正则提取 JSON 块并通过 Pydantic 校验。
 
 ## 成本控制
 
