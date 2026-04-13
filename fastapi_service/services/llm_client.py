@@ -590,6 +590,7 @@ class LLMClient:
         user_msg += f"\n请为这本小说生成【{label}】，严格按照上述 JSON + Markdown 双代码块格式。"
 
         full_text = ""
+        thinking_sent = False
         try:
             logger.info(f"Streaming from provider: {providers[0].get('name', '?')}")
             async for delta in llm_provider_manager.call_llm_stream(
@@ -597,6 +598,12 @@ class LLMClient:
                 user_message=user_msg,
                 providers=providers,
             ):
+                # Sentinel from reasoning models — notify client once
+                if delta == '\x00THINKING\x00':
+                    if not thinking_sent:
+                        thinking_sent = True
+                        yield ("thinking", "AI 正在深度思考中...")
+                    continue
                 full_text += delta
                 yield ("chunk", delta)
         except Exception as e:

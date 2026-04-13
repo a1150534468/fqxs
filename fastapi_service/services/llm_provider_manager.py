@@ -163,7 +163,13 @@ class LLMProviderManager:
         temperature: float,
         max_tokens: int,
     ) -> AsyncIterator[str]:
-        """Stream from a single OpenAI-compatible provider."""
+        """Stream from a single OpenAI-compatible provider.
+
+        Supports reasoning models (e.g. qwen3) that stream ``reasoning_content``
+        before the actual ``content``.  Only actual content is yielded.
+        A sentinel ``\\x00THINKING\\x00`` line is yielded once when the reasoning
+        phase begins so callers can show a "thinking" indicator.
+        """
         api_url = provider['api_url'].rstrip('/')
         api_key = provider['api_key']
         model = provider.get('model', 'gpt-3.5-turbo')
@@ -183,7 +189,8 @@ class LLMProviderManager:
             'stream': True,
         }
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        sent_thinking = False
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
             async with client.stream('POST', f'{api_url}/chat/completions', headers=headers, json=body) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
@@ -194,9 +201,14 @@ class LLMProviderManager:
                         return
                     try:
                         data = json.loads(payload)
-                        delta = data['choices'][0].get('delta', {}).get('content', '')
-                        if delta:
-                            yield delta
+                        delta = data['choices'][0].get('delta', {})
+                        content = delta.get('content') or ''
+                        reasoning = delta.get('reasoning_content') or ''
+                        if reasoning and not sent_thinking:
+                            sent_thinking = True
+                            yield '\x00THINKING\x00'
+                        if content:
+                            yield content
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
 

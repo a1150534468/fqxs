@@ -50,6 +50,7 @@ export const NewBookWizard = ({
 
   const {
     streamingText,
+    statusMessage,
     isStreaming,
     error: streamError,
     generate,
@@ -126,7 +127,6 @@ export const NewBookWizard = ({
   // Reset on close
   useEffect(() => {
     if (!open) {
-      console.log('[Wizard] reset effect: open=false, stopping');
       setStep(0);
       setSettings({});
       setStepContent({});
@@ -670,7 +670,8 @@ export const NewBookWizard = ({
                         <p className="text-sm font-medium text-gray-700">AI 实时输出</p>
                         {isStreaming && (
                           <p className="text-xs text-emerald-500 flex items-center gap-1">
-                            <PlayCircleOutlined className="animate-pulse" /> WebSocket 流式生成中
+                            <PlayCircleOutlined className="animate-pulse" />
+                            {statusMessage || 'WebSocket 流式生成中'}
                           </p>
                         )}
                       </div>
@@ -708,8 +709,11 @@ export const NewBookWizard = ({
                           </Button>
                         </div>
                       ) : isStreaming && !previewMarkdown ? (
-                        <div className="flex items-center justify-center h-full">
-                          <Spin tip={`正在生成${currentLabel}...`} />
+                        <div className="flex flex-col items-center justify-center h-full gap-2">
+                          <Spin tip={statusMessage || `正在生成${currentLabel}...`} />
+                          {statusMessage && (
+                            <p className="text-xs text-gray-400 mt-2 animate-pulse">{statusMessage}</p>
+                          )}
                         </div>
                       ) : previewMarkdown ? (
                         <MDEditor.Markdown source={previewMarkdown} style={{ background: 'transparent' }} />
