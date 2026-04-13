@@ -51,6 +51,7 @@ export const NewBookWizard = ({
   const {
     streamingText,
     isStreaming,
+    error: streamError,
     generate,
     stop,
   } = useSettingStream();
@@ -692,7 +693,14 @@ export const NewBookWizard = ({
                       </div>
                     </div>
                     <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap" data-color-mode="light">
-                      {isStreaming && !previewMarkdown ? (
+                      {streamError && !isStreaming ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-2">
+                          <p className="text-red-500 text-sm">{streamError}</p>
+                          <Button size="small" type="primary" onClick={handleManualGenerate}>
+                            重试
+                          </Button>
+                        </div>
+                      ) : isStreaming && !previewMarkdown ? (
                         <div className="flex items-center justify-center h-full">
                           <Spin tip={`正在生成${currentLabel}...`} />
                         </div>

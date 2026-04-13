@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 
-const WS_URL = 'ws://localhost:8001/ws/generate-setting';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8001/ws/generate-setting';
 
 export interface SettingStreamResult {
   setting_type: string;
@@ -48,24 +48,35 @@ export function useSettingStream() {
         // Close previous connection
         if (wsRef.current) {
           wsRef.current.close();
+          wsRef.current = null;
         }
 
+        // Track whether this promise has already resolved
+        let resolved = false;
+        const safeResolve = (value: SettingStreamResult | null) => {
+          if (resolved) return;
+          resolved = true;
+          resolve(value);
+        };
+
+        console.log('[useSettingStream] opening WebSocket:', WS_URL);
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
 
         ws.onopen = () => {
+          console.log('[useSettingStream] WebSocket connected');
           const token = useAuthStore.getState().token;
-          ws.send(
-            JSON.stringify({
-              action: 'generate',
-              token: token || '',
-              setting_type: params.setting_type,
-              book_title: params.book_title,
-              genre: params.genre || '',
-              context: params.context || '',
-              prior_settings: params.prior_settings || [],
-            }),
-          );
+          const payload = {
+            action: 'generate',
+            token: token || '',
+            setting_type: params.setting_type,
+            book_title: params.book_title,
+            genre: params.genre || '',
+            context: params.context || '',
+            prior_settings: params.prior_settings || [],
+          };
+          console.log('[useSettingStream] sending:', params.setting_type, 'book:', params.book_title);
+          ws.send(JSON.stringify(payload));
         };
 
         ws.onmessage = (event) => {
@@ -76,6 +87,7 @@ export function useSettingStream() {
               accumulatedRef.current += msg.content;
               setStreamingText(accumulatedRef.current);
             } else if (msg.type === 'done') {
+              console.log('[useSettingStream] done, validation_ok:', msg.validation_ok);
               const res: SettingStreamResult = {
                 setting_type: msg.setting_type,
                 title: msg.title || '',
@@ -88,28 +100,50 @@ export function useSettingStream() {
               setStreamingText(res.content);
               setIsStreaming(false);
               ws.close();
-              resolve(res);
+              safeResolve(res);
             } else if (msg.type === 'error') {
+              console.error('[useSettingStream] server error:', msg.message);
               setError(msg.message || 'Unknown error');
               setIsStreaming(false);
               ws.close();
-              resolve(null);
+              safeResolve(null);
             }
-          } catch {
-            // ignore parse errors
+          } catch (e) {
+            console.warn('[useSettingStream] parse error:', e);
           }
         };
 
-        ws.onerror = () => {
-          setError('WebSocket connection failed');
+        ws.onerror = (event) => {
+          console.error('[useSettingStream] WebSocket error:', event);
+          setError(`WebSocket 连接失败 (${WS_URL})`);
           setIsStreaming(false);
-          resolve(null);
+          safeResolve(null);
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
+          console.log('[useSettingStream] WebSocket closed, code:', event.code, 'wasClean:', event.wasClean);
           if (wsRef.current === ws) {
             wsRef.current = null;
+          }
+          // If the promise never resolved (server closed without done/error),
+          // resolve now to prevent hanging.
+          if (!resolved) {
+            console.warn('[useSettingStream] WebSocket closed before done/error — resolving with accumulated text');
             setIsStreaming(false);
+            if (accumulatedRef.current) {
+              // We received some chunks before disconnect — return partial result
+              const partial: SettingStreamResult = {
+                setting_type: params.setting_type,
+                title: '',
+                content: accumulatedRef.current,
+                structured_data: {},
+                validation_ok: false,
+              };
+              safeResolve(partial);
+            } else {
+              setError('WebSocket 连接异常关闭，未收到数据');
+              safeResolve(null);
+            }
           }
         };
       });
