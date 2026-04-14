@@ -26,8 +26,7 @@ export const statusColors: Record<string, string> = {
 
 export const chapterStatusTag: Record<string, { color: string; label: string }> = {
   generating: { color: 'processing', label: '生成中' },
-  pending_review: { color: 'warning', label: '待审核' },
-  approved: { color: 'green', label: '已审核' },
+  draft: { color: 'warning', label: '草稿' },
   published: { color: 'blue', label: '已发布' },
   failed: { color: 'red', label: '失败' },
 };
