@@ -11,7 +11,14 @@ function App() {
     <ConfigProvider locale={zhCN}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<AuthRoute><Dashboard /></AuthRoute>} />
+        <Route
+          path="/*"
+          element={
+            <AuthRoute>
+              <Dashboard />
+            </AuthRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ConfigProvider>

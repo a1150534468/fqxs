@@ -1,12 +1,25 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+
+const refreshClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 60000,
+});
 
 export const request = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
 });
+
+const isAuthEndpoint = (url?: string) => {
+  if (!url) {
+    return false;
+  }
+
+  return url.includes('/users/login/') || url.includes('/users/refresh/');
+};
 
 request.interceptors.request.use(
   (config) => {
@@ -23,18 +36,23 @@ request.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
+
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthEndpoint(originalRequest.url)
+    ) {
       originalRequest._retry = true;
       const refreshToken = useAuthStore.getState().refreshToken;
-      
+
       if (refreshToken) {
         try {
-          const res = await axios.post(`${API_BASE_URL}/users/refresh/`, { refresh: refreshToken });
+          const res = await refreshClient.post('/users/refresh/', { refresh: refreshToken });
           const newAccess = res.data.access;
-          
+
           useAuthStore.getState().setAuth(newAccess, refreshToken);
-          
+
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${newAccess}`;
           }
@@ -49,7 +67,7 @@ request.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    
+
     return Promise.reject(error);
   }
 );

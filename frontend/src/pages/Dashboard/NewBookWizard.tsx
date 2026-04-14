@@ -757,7 +757,7 @@ export const NewBookWizard = ({
                 </div>
               ) : (
                 <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-                  <div className="flex-1 flex flex-col min-w-0">
+                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-gray-700">AI 实时输出</p>
@@ -793,7 +793,7 @@ export const NewBookWizard = ({
                         </Button>
                       </div>
                     </div>
-                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto whitespace-pre-wrap min-w-0 [&_pre]:overflow-x-auto [&_pre]:max-w-full" data-color-mode="light" style={{ wordBreak: 'break-word' }}>
+                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto w-0 min-w-full" data-color-mode="light">
                       {streamError && !isStreaming ? (
                         <div className="flex flex-col items-center justify-center h-full gap-2">
                           <p className="text-red-500 text-sm">{streamError}</p>
@@ -808,8 +808,14 @@ export const NewBookWizard = ({
                             <p className="text-xs text-gray-400 mt-2 animate-pulse">{statusMessage}</p>
                           )}
                         </div>
+                      ) : isStreaming && previewMarkdown ? (
+                        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                          {previewMarkdown}
+                        </div>
                       ) : previewMarkdown ? (
-                        <MDEditor.Markdown source={previewMarkdown} style={{ background: 'transparent' }} />
+                        <div style={{ width: '100%', overflow: 'hidden', wordBreak: 'break-word' }}>
+                          <MDEditor.Markdown source={previewMarkdown} style={{ background: 'transparent', maxWidth: '100%' }} />
+                        </div>
                       ) : (
                         <p className="text-xs text-gray-400">
                           进入本步后将自动基于前序设定生成建议；也可点击右上角重新生成。
@@ -817,7 +823,7 @@ export const NewBookWizard = ({
                       )}
                     </div>
                   </div>
-                  <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                  <div className="flex-1 flex flex-col overflow-hidden min-w-0 max-w-full">
                     <span className="text-sm font-medium text-gray-700 mb-2">结构化编辑</span>
                     <Input
                       placeholder={`${currentLabel}标题`}

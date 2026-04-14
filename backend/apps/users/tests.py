@@ -58,7 +58,24 @@ class UserAuthAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
         self.assertIn('refresh', response.data)
+        self.assertEqual(response.data['user']['id'], self.user.id)
         self.assertEqual(response.data['user']['username'], 'apiuser')
+        self.assertEqual(response.data['user']['email'], 'apiuser@example.com')
+        self.assertTrue(response.data['user']['is_active'])
+        self.assertFalse(response.data['user']['is_staff'])
+
+    def test_login_with_invalid_credentials_returns_401(self):
+        response = self.client.post(
+            '/api/users/login/',
+            {
+                'username': 'apiuser',
+                'password': 'wrong-password',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('detail', response.data)
 
     def test_refresh_returns_new_access_token(self):
         login_response = self.client.post(
