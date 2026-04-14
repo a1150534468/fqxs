@@ -30,6 +30,7 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
         const isSelected = chapter.id === selectedChapterId;
         return (
           <List.Item
+            key={chapter.id}
             className={`cursor-pointer px-2 rounded transition-colors ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
             onClick={() => onSelect(chapter)}
           >

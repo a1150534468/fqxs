@@ -90,7 +90,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
             <div className="px-3 py-2 text-xs text-gray-300">等待任务启动...</div>
           ) : (
             streamState.logs.map((log, i) => (
-              <div key={i} className="px-3 py-1 text-xs text-gray-600 border-b border-gray-50 last:border-0">
+              <div key={`${log.time}-${i}`} className="px-3 py-1 text-xs text-gray-600 border-b border-gray-50 last:border-0">
                 <span className="text-gray-400 mr-2">[{log.time}]</span>
                 {log.message}
               </div>

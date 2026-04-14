@@ -92,9 +92,7 @@ export function useChapterStream(projectId: number | null) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'chunk') {
-          const entry2 = streamMap.get(pid);
-          if (!entry2) return;
-          setEntryState(pid, { streamText: entry2.state.streamText + msg.content });
+          setEntryState(pid, { streamText: entry.state.streamText + msg.content });
         } else if (msg.type === 'log') {
           appendLog(pid, msg.message, msg.timestamp);
         } else if (msg.type === 'status') {
