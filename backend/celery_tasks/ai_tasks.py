@@ -66,7 +66,7 @@ def generate_chapter_async(self, project_id, chapter_number, chapter_title, task
                 'raw_content': content,
                 'final_content': content,
                 'word_count': int(payload.get('word_count') or _calculate_word_count(content)),
-                'status': 'pending_review',
+                'status': 'draft',
                 'generated_at': timezone.now(),
                 'is_deleted': False,
             },
@@ -286,7 +286,7 @@ def start_novel_project_from_inspiration(
                 raw_content=chapter_data.get('content', ''),
                 final_content=chapter_data.get('content', ''),
                 word_count=chapter_data.get('word_count', 0),
-                status='pending_review',
+                status='draft',
                 generated_at=timezone.now(),
             )
 

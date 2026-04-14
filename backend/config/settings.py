@@ -193,10 +193,6 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'celery_tasks.stats_tasks.update_daily_stats',
         'schedule': crontab(minute=0),
     },
-    'auto-generate-chapters-daily': {
-        'task': 'celery_tasks.ai_tasks.auto_generate_chapters_daily',
-        'schedule': crontab(hour=8, minute=0),
-    },
 }
 
 # Logging Configuration

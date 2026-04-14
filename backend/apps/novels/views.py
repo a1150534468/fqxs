@@ -147,53 +147,24 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='start-auto-generation')
     def start_auto_generation(self, request, pk=None):
-        """Enable automatic chapter generation for a project."""
         project = self.get_object()
-
-        schedule = request.data.get('generation_schedule', 'daily')
-        if schedule not in ['daily', 'every_2_days', 'weekly']:
-            return Response(
-                {'error': 'Invalid generation_schedule. Must be daily, every_2_days, or weekly.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         project.auto_generation_enabled = True
-        project.generation_schedule = schedule
-
-        # Calculate next generation time
-        now = timezone.now()
-        if schedule == 'daily':
-            project.next_generation_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
-            if project.next_generation_time <= now:
-                project.next_generation_time += timezone.timedelta(days=1)
-        elif schedule == 'every_2_days':
-            project.next_generation_time = now.replace(hour=8, minute=0, second=0, microsecond=0) + timezone.timedelta(days=2)
-        else:  # weekly
-            project.next_generation_time = now.replace(hour=8, minute=0, second=0, microsecond=0) + timezone.timedelta(days=7)
-
-        project.save(update_fields=['auto_generation_enabled', 'generation_schedule', 'next_generation_time', 'updated_at'])
-
+        project.save(update_fields=['auto_generation_enabled', 'updated_at'])
         return Response({
-            'message': 'Auto-generation started successfully',
+            'message': 'Auto-generation started',
             'project_id': project.id,
-            'auto_generation_enabled': project.auto_generation_enabled,
-            'generation_schedule': project.generation_schedule,
-            'next_generation_time': project.next_generation_time,
+            'auto_generation_enabled': True,
         })
 
     @action(detail=True, methods=['post'], url_path='stop-auto-generation')
     def stop_auto_generation(self, request, pk=None):
-        """Disable automatic chapter generation for a project."""
         project = self.get_object()
-
         project.auto_generation_enabled = False
-        project.next_generation_time = None
-        project.save(update_fields=['auto_generation_enabled', 'next_generation_time', 'updated_at'])
-
+        project.save(update_fields=['auto_generation_enabled', 'updated_at'])
         return Response({
-            'message': 'Auto-generation stopped successfully',
+            'message': 'Auto-generation stopped',
             'project_id': project.id,
-            'auto_generation_enabled': project.auto_generation_enabled,
+            'auto_generation_enabled': False,
         })
 
     @action(detail=True, methods=['post'], url_path='generate-setting')
