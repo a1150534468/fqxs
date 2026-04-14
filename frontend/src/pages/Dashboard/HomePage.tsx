@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Button } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { SidebarOverview } from './components/SidebarOverview';
 import { NewBookCard, type ChatMessage } from './components/NewBookCard';
@@ -90,12 +89,11 @@ export const HomePage = ({
             <p className="text-indigo-100 mt-2">从一句灵感到上架完稿，左侧导航随时召唤 6 步写作引擎。</p>
           </div>
           <div className="flex gap-4">
-            <Button icon={<ThunderboltOutlined />} size="large" ghost>
-              快速导入
-            </Button>
+            
             <Button type="primary" size="large" onClick={onCreateProject}>
               建档并进入工作台
             </Button>
+            
           </div>
         </div>
 
@@ -112,12 +110,7 @@ export const HomePage = ({
 
           <div className="space-y-5">
             <BookGrid novels={novels} onSelectNovel={onSelectNovel} />
-            <div className="rounded-2xl bg-slate-900/80 text-indigo-100 px-4 py-3 shadow-inner">
-              <p className="text-xs uppercase tracking-[0.4em] text-amber-200">直播弹幕</p>
-              <p className="mt-2 text-sm leading-relaxed">
-                新书《星港逐梦》正在向导第 7 步 · 维度框架，欢迎加入共创 —— 当前房间在线 5,432 人。
-              </p>
-            </div>
+            
           </div>
         </div>
       </main>
