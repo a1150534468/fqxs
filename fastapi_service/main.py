@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from routers.ai_generate import router as ai_router
+from routers.ws_chapter import router as ws_chapter_router
 from routers.ws_generate import router as ws_router
 from services.llm_provider_manager import llm_provider_manager
 
@@ -25,6 +26,7 @@ llm_provider_manager.set_django_api_url(settings.django_api_url)
 
 app.include_router(ai_router)
 app.include_router(ws_router)
+app.include_router(ws_chapter_router)
 
 
 @app.get("/health")
