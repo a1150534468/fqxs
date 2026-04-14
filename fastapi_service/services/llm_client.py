@@ -320,6 +320,93 @@ class LLMClient:
             user_token=user_token,
         )
 
+    async def generate_chapter_stream(
+        self,
+        project_id: int,
+        chapter_number: int,
+        chapter_title: str,
+        outline_context: str = "",
+        user_token: str | None = None,
+    ):
+        """Async generator yielding (type, data) tuples for chapter streaming.
+
+        Yields:
+            ("status", message_str)
+            ("chunk", delta_text)
+            ("done", {"content": str, "word_count": int})
+        """
+        use_mock = await self._should_use_mock(user_token)
+
+        if use_mock:
+            async for item in self._mock_generate_chapter_stream(
+                project_id, chapter_number, chapter_title, outline_context
+            ):
+                yield item
+            return
+
+        # Real LLM path — use call_llm_stream
+        providers = []
+        try:
+            providers = await llm_provider_manager.fetch_providers_from_django(
+                user_token, task_type='chapter'
+            )
+        except Exception:
+            pass
+
+        if not providers:
+            async for item in self._mock_generate_chapter_stream(
+                project_id, chapter_number, chapter_title, outline_context
+            ):
+                yield item
+            return
+
+        user_msg = (
+            f"项目ID: {project_id}\n"
+            f"章节：第{chapter_number}章《{chapter_title}》\n"
+        )
+        if outline_context:
+            user_msg += f"大纲参考：{outline_context}\n"
+        user_msg += "请写出该章节的正文内容。"
+
+        full_text = ""
+        try:
+            async for delta in llm_provider_manager.call_llm_stream(
+                system_message=self.SYSTEM_CHAPTER,
+                user_message=user_msg,
+                providers=providers,
+            ):
+                if delta == '\x00THINKING\x00':
+                    continue
+                full_text += delta
+                yield ("chunk", delta)
+        except Exception as e:
+            logger.warning(f"[chapter_stream] Real LLM failed: {e}, falling back to mock")
+            if not full_text:
+                async for item in self._mock_generate_chapter_stream(
+                    project_id, chapter_number, chapter_title, outline_context
+                ):
+                    yield item
+                return
+
+        yield ("done", {"content": full_text, "word_count": self._count_words(full_text)})
+
+    async def _mock_generate_chapter_stream(
+        self,
+        project_id: int,
+        chapter_number: int,
+        chapter_title: str,
+        outline_context: str = "",
+    ):
+        """Mock streaming chapter generation — yields chunks then done."""
+        content, word_count = await self._mock_generate_chapter(
+            project_id, chapter_number, chapter_title, outline_context
+        )
+        chunk_size = 8
+        for i in range(0, len(content), chunk_size):
+            yield ("chunk", content[i:i + chunk_size])
+            await asyncio.sleep(0.04)
+        yield ("done", {"content": content, "word_count": word_count})
+
     async def continue_content(
         self, current_content: str, continue_length: int,
         user_token: str | None = None,
