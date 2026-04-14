@@ -24,9 +24,9 @@ def publish_chapter_async(self, chapter_id, task_record_id=None):
     try:
         chapter = Chapter.objects.get(id=chapter_id, is_deleted=False)
 
-        # Check if chapter is approved
-        if chapter.status != 'approved':
-            error_msg = f'Chapter must be approved before publishing. Current status: {chapter.status}'
+        # Check if chapter is in draft status
+        if chapter.status != 'draft':
+            error_msg = f'Chapter must be in draft status before publishing. Current status: {chapter.status}'
             logger.error(error_msg)
             if task_record_id:
                 Task.objects.filter(id=task_record_id).update(

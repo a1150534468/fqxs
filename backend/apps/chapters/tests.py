@@ -53,7 +53,7 @@ class ChapterModelTest(TestCase):
             final_content='final',
             word_count=1234,
             llm_provider=self.provider,
-            status='pending_review',
+            status='draft',
         )
 
         self.assertEqual(chapter.project, self.project)
@@ -108,7 +108,7 @@ class ChapterAPITest(TestCase):
             title='Draft Intro',
             final_content='draft content',
             word_count=11,
-            status='pending_review',
+            status='draft',
         )
         self.chapter_published = Chapter.objects.create(
             project=self.project,
@@ -190,7 +190,7 @@ class ChapterAPITest(TestCase):
         self.assertEqual(response.data['project'], self.project.id)
         self.assertEqual(response.data['word_count'], 6)
         self.assertEqual(response.data['publish_status'], 'draft')
-        self.assertEqual(response.data['status'], 'pending_review')
+        self.assertEqual(response.data['status'], 'draft')
 
     def test_create_chapter_requires_project_id(self):
         response = self.client.post(

@@ -250,7 +250,7 @@ class StartProjectFromInspirationView(APIView):
                     raw_content=chapter_data.get('content', ''),
                     final_content=chapter_data.get('content', ''),
                     word_count=chapter_data.get('word_count', 0),
-                    status='pending_review',
+                    status='draft',
                     generated_at=timezone.now(),
                 )
 

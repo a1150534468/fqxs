@@ -127,9 +127,9 @@ def stats_trend(request):
 
 
 def _map_chapter_status(status: str) -> str:
-    if status in {'approved', 'published'}:
+    if status in {'draft', 'published'}:
         return 'success'
-    if status in {'pending_review', 'generating'}:
+    if status in {'generating'}:
         return 'warning'
     return 'error'
 

@@ -126,8 +126,7 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
 
         status_counts = chapters.aggregate(
             generating=Count(Case(When(status='generating', then=1), output_field=IntegerField())),
-            pending_review=Count(Case(When(status='pending_review', then=1), output_field=IntegerField())),
-            approved=Count(Case(When(status='approved', then=1), output_field=IntegerField())),
+            draft=Count(Case(When(status='draft', then=1), output_field=IntegerField())),
             published=Count(Case(When(status='published', then=1), output_field=IntegerField())),
             failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
         )

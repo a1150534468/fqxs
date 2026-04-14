@@ -139,13 +139,6 @@ class ChapterViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if already published
-        if chapter.status == 'published':
-            return Response(
-                {'error': 'Chapter is already published'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         # Create task record
         task_record = Task.objects.create(
             task_type='publish_chapter',
@@ -242,6 +235,7 @@ class GenerateFromWSView(APIView):
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
+        from django.db import transaction
         project_id = request.data.get('project_id')
         content = request.data.get('content', '')
         word_count = request.data.get('word_count', 0)
@@ -250,26 +244,28 @@ class GenerateFromWSView(APIView):
             return Response({'error': 'project_id required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            project = NovelProject.objects.get(id=project_id, user=request.user, is_deleted=False)
+            with transaction.atomic():
+                project = NovelProject.objects.select_for_update().get(
+                    id=project_id, user=request.user, is_deleted=False
+                )
+                next_number = project.chapters.filter(is_deleted=False).count() + 1
+                chapter, _ = Chapter.objects.update_or_create(
+                    project=project,
+                    chapter_number=next_number,
+                    defaults={
+                        'title': f'第{next_number}章',
+                        'raw_content': content,
+                        'final_content': content,
+                        'word_count': word_count,
+                        'status': 'draft',
+                        'generated_at': timezone.now(),
+                        'is_deleted': False,
+                    },
+                )
+                project.current_chapter = next_number
+                project.last_update_at = timezone.now()
+                project.save(update_fields=['current_chapter', 'last_update_at', 'updated_at'])
         except NovelProject.DoesNotExist:
             return Response({'error': 'Project not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        next_number = project.chapters.filter(is_deleted=False).count() + 1
-        chapter, _ = Chapter.objects.update_or_create(
-            project=project,
-            chapter_number=next_number,
-            defaults={
-                'title': f'第{next_number}章',
-                'raw_content': content,
-                'final_content': content,
-                'word_count': word_count,
-                'status': 'draft',
-                'generated_at': timezone.now(),
-                'is_deleted': False,
-            },
-        )
-        project.current_chapter = next_number
-        project.last_update_at = timezone.now()
-        project.save(update_fields=['current_chapter', 'last_update_at', 'updated_at'])
 
         return Response(ChapterSerializer(chapter).data, status=status.HTTP_201_CREATED)
