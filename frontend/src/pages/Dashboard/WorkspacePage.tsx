@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
-import { message } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { message, Button } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { publishChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
 import { ChapterSidebar } from './ChapterSidebar';
@@ -38,6 +40,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   onChapterSaved,
 }) => {
   const { state: streamState, start, stop } = useChapterStream(selectedNovel?.id ?? null);
+  const navigate = useNavigate();
 
   const handleStart = () => {
     if (!selectedNovel) { message.warning('请先选择一本书'); return; }
@@ -66,7 +69,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       prevDoneChapter.current = streamState.currentChapter;
       onChapterSaved?.();
     }
-  }, [streamState.currentChapter]);
+  }, [streamState.currentChapter, onChapterSaved]);
 
   const topBarStats = useMemo(() => [
     { label: '总字数', value: formatNumber(aggregatedStats.totalWords) },
@@ -80,6 +83,13 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top bar */}
       <div className="flex items-center gap-6 px-6 py-3 bg-white border-b border-gray-200 shadow-sm">
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          size="small"
+          onClick={() => navigate('/')}
+          className="text-gray-500"
+        />
         <span className="font-semibold text-gray-800 text-base">
           {selectedNovel?.title ?? '未选择书目'}
         </span>
