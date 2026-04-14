@@ -6,8 +6,7 @@ class Chapter(models.Model):
 
     STATUS_CHOICES = [
         ('generating', '生成中'),
-        ('pending_review', '待审核'),
-        ('approved', '已审核'),
+        ('draft', '草稿'),
         ('published', '已发布'),
         ('failed', '生成失败'),
     ]

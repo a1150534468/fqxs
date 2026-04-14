@@ -20,7 +20,7 @@ from celery_tasks.ai_tasks import generate_chapter_async
 from celery_tasks.publish_tasks import publish_chapter_async
 
 PUBLISH_STATUS_TO_INTERNAL = {
-    'draft': ('generating', 'pending_review', 'approved'),
+    'draft': ('generating', 'draft'),
     'published': ('published',),
     'failed': ('failed',),
 }
@@ -132,10 +132,10 @@ class ChapterViewSet(viewsets.ModelViewSet):
         """Publish a chapter to Tomato Novel platform."""
         chapter = self.get_object()
 
-        # Check if chapter is approved
-        if chapter.status != 'approved':
+        # Check if chapter is in draft status (ready to publish)
+        if chapter.status != 'draft':
             return Response(
-                {'error': 'Chapter must be approved before publishing. Current status: ' + chapter.status},
+                {'error': 'Chapter must be in draft status before publishing. Current status: ' + chapter.status},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

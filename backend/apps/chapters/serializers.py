@@ -7,14 +7,13 @@ from apps.novels.models import NovelProject
 
 PUBLISH_STATUS_CHOICES = ('draft', 'published', 'failed')
 PUBLISH_TO_INTERNAL_STATUS = {
-    'draft': 'pending_review',
+    'draft': 'draft',
     'published': 'published',
     'failed': 'failed',
 }
 INTERNAL_TO_PUBLISH_STATUS = {
     'generating': 'draft',
-    'pending_review': 'draft',
-    'approved': 'draft',
+    'draft': 'draft',
     'published': 'published',
     'failed': 'failed',
 }
