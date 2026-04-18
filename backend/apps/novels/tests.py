@@ -138,7 +138,39 @@ class DraftAPITest(TestCase):
         mock_post.assert_not_called()
 
     @patch('apps.novels.views.httpx.post')
-    def test_generate_titles_uses_draft_payload_and_clamped_count(self, mock_post):
+    def test_generate_titles_forwards_draft_payload(self, mock_post):
+        draft = NovelDraft.objects.create(
+            user=self.user,
+            inspiration='落魄县令靠断案直播洗白翻红',
+            genre='历史',
+            style_preference='冷幽默',
+        )
+        mock_post.return_value.status_code = status.HTTP_200_OK
+        mock_post.return_value.json.return_value = {'titles': ['县令翻红记']}
+
+        response = self.client.post(
+            reverse('draft-generate-titles', kwargs={'pk': draft.pk}),
+            {'count': 4},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['titles'], ['县令翻红记'])
+        self.assertEqual(response.data['style_preference'], '冷幽默')
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(
+            kwargs['json'],
+            {
+                'inspiration': '落魄县令靠断案直播洗白翻红',
+                'genre': '历史',
+                'style_preference': '冷幽默',
+                'count': 4,
+            },
+        )
+
+    @patch('apps.novels.views.httpx.post')
+    def test_generate_titles_clamps_requested_count(self, mock_post):
         draft = NovelDraft.objects.create(
             user=self.user,
             inspiration='落魄县令靠断案直播洗白翻红',
@@ -156,18 +188,9 @@ class DraftAPITest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['titles'], ['县令翻红记'])
-        self.assertEqual(response.data['style_preference'], '冷幽默')
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
-        self.assertEqual(
-            kwargs['json'],
-            {
-                'inspiration': '落魄县令靠断案直播洗白翻红',
-                'genre': '历史',
-                'style_preference': '冷幽默',
-                'count': 5,
-            },
-        )
+        self.assertEqual(kwargs['json']['count'], 5)
 
 
 class NovelProjectAPITest(TestCase):
