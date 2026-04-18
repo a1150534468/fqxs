@@ -3,6 +3,15 @@ import '@testing-library/jest-dom/vitest';
 import { describe, expect, test, vi } from 'vitest';
 import { NewBookWizard } from './NewBookWizard';
 
+const mockStreamState = {
+  streamingText: '# 一个非常长的标题 '.repeat(20),
+  statusMessage: 'streaming',
+  isStreaming: true,
+  error: '',
+  generate: vi.fn(),
+  stop: vi.fn(),
+};
+
 vi.mock('../../api/novels', () => ({
   getDraftSettings: vi.fn(() => Promise.resolve([])),
   saveDraftStep: vi.fn(() => Promise.resolve({})),
@@ -10,14 +19,7 @@ vi.mock('../../api/novels', () => ({
 }));
 
 vi.mock('../../hooks/useSettingStream', () => ({
-  useSettingStream: () => ({
-    streamingText: '# 一个非常长的标题 '.repeat(20),
-    statusMessage: 'streaming',
-    isStreaming: true,
-    error: '',
-    generate: vi.fn(),
-    stop: vi.fn(),
-  }),
+  useSettingStream: () => mockStreamState,
 }));
 
 vi.mock('echarts-for-react', () => ({
@@ -26,6 +28,13 @@ vi.mock('echarts-for-react', () => ({
 
 describe('NewBookWizard streaming preview', () => {
   test('keeps the streaming markdown panel constrained to the section width', async () => {
+    Object.assign(mockStreamState, {
+      streamingText: '# 一个非常长的标题 '.repeat(20),
+      statusMessage: 'streaming',
+      isStreaming: true,
+      error: '',
+    });
+
     render(
       <NewBookWizard
         open
@@ -48,5 +57,29 @@ describe('NewBookWizard streaming preview', () => {
 
     expect(previewPanel).toBeTruthy();
     expect(previewPanel).toHaveClass('min-w-0');
+    expect(previewPanel).toHaveClass('w-full');
+    expect(previewPanel).not.toHaveClass('w-0');
+  });
+
+  test('locks future steps before previous steps are completed', async () => {
+    Object.assign(mockStreamState, {
+      streamingText: '',
+      statusMessage: '',
+      isStreaming: false,
+      error: '',
+    });
+
+    render(
+      <NewBookWizard
+        open
+        onClose={() => {}}
+        draftId={1}
+        pendingTitle="测试书名"
+        onFinished={() => {}}
+      />,
+    );
+
+    const nextStepButton = await screen.findByRole('button', { name: /人物/ });
+    expect(nextStepButton).toBeDisabled();
   });
 });

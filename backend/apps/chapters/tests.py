@@ -9,10 +9,10 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.chapters.models import Chapter
+from apps.chapters.models import Chapter, ChapterSummary
 from apps.inspirations.models import Inspiration
 from apps.llm_providers.models import LLMProvider
-from apps.novels.models import NovelProject
+from apps.novels.models import ForeshadowItem, KnowledgeFact, NovelProject, NovelSetting, StyleProfile
 from apps.tasks.models import Task
 
 User = get_user_model()
@@ -96,6 +96,33 @@ class ChapterAPITest(TestCase):
             title='Owner Novel',
             genre='Fantasy',
         )
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='characters',
+            title='角色',
+            content='苏明月是主角，沈砚是盟友。',
+            structured_data={
+                'characters': [
+                    {'name': '苏明月', 'role': '主角', 'brief': '调查者'},
+                    {'name': '沈砚', 'role': '盟友', 'brief': '守夜人'},
+                ],
+            },
+            source='wizard',
+            order=1,
+        )
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='map',
+            title='地图',
+            content='云海城是主舞台。',
+            structured_data={
+                'regions': [
+                    {'name': '云海城', 'type': '城市', 'description': '高空城邦'},
+                ],
+            },
+            source='wizard',
+            order=2,
+        )
         self.other_project = NovelProject.objects.create(
             user=self.other_user,
             title='Other Novel',
@@ -149,6 +176,7 @@ class ChapterAPITest(TestCase):
         self.detail_url = reverse('chapter-detail', kwargs={'pk': self.chapter_draft.pk})
         self.other_detail_url = reverse('chapter-detail', kwargs={'pk': self.other_chapter.pk})
         self.generate_async_url = reverse('chapter-generate-async')
+        self.generate_from_ws_url = reverse('chapter-generate-from-ws')
 
         self.authenticate(self.client, 'chapter-owner')
         self.authenticate(self.other_client, 'chapter-other')
@@ -416,3 +444,88 @@ class ChapterAPITest(TestCase):
         self.assertIn('chapter_number', response.data)
         self.assertIn('chapter_title', response.data)
         mock_delay.assert_not_called()
+
+    def test_generate_from_ws_persists_metadata_and_summary(self):
+        response = self.client.post(
+            self.generate_from_ws_url,
+            {
+                'project_id': self.project.id,
+                'chapter_number': 9,
+                'chapter_title': '第九章',
+                'content': '风雪压城，主角终于看见了那封旧信。可旧信为何会出现在这里？',
+                'word_count': 31,
+                'generation_meta': {
+                    'task_type': 'chapter',
+                    'transport': 'websocket',
+                    'session_id': 'session-123',
+                },
+                'context_snapshot': {
+                    'chapter_goal': '揭示旧信',
+                    'selected_settings': ['worldview'],
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        chapter = Chapter.objects.get(project=self.project, chapter_number=9)
+        self.assertEqual(chapter.status, 'draft')
+        self.assertEqual(chapter.generation_meta['session_id'], 'session-123')
+        self.assertEqual(chapter.context_snapshot['chapter_goal'], '揭示旧信')
+        self.assertTrue(chapter.summary)
+        self.assertIsInstance(chapter.open_threads, list)
+        self.assertIn(chapter.consistency_status['status'], {'ok', 'warning'})
+
+        summary_record = ChapterSummary.objects.get(chapter=chapter)
+        self.assertEqual(summary_record.project, self.project)
+        self.assertTrue(summary_record.summary)
+        self.assertTrue(KnowledgeFact.objects.filter(project=self.project, chapter=chapter).exists())
+        self.assertTrue(ForeshadowItem.objects.filter(project=self.project, introduced_in_chapter=chapter).exists())
+        self.assertTrue(StyleProfile.objects.filter(project=self.project, profile_type='chapter_analysis').exists())
+
+    def test_generate_from_ws_requires_owned_project(self):
+        response = self.client.post(
+            self.generate_from_ws_url,
+            {
+                'project_id': self.other_project.id,
+                'chapter_number': 9,
+                'content': 'blocked',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_generate_from_ws_updates_existing_chapter_in_place(self):
+        chapter = Chapter.objects.create(
+            project=self.project,
+            chapter_number=9,
+            title='旧标题',
+            raw_content='旧内容',
+            final_content='旧内容',
+            word_count=3,
+            status='draft',
+        )
+
+        response = self.client.post(
+            self.generate_from_ws_url,
+            {
+                'project_id': self.project.id,
+                'chapter_number': 9,
+                'chapter_title': '新标题',
+                'content': '新的章节内容已经覆盖旧稿，并继续推进主线。',
+                'generation_meta': {
+                    'task_type': 'regenerate',
+                    'mode': 'regenerate',
+                    'session_id': 'session-regenerate',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        chapter.refresh_from_db()
+        self.assertEqual(chapter.id, response.data['id'])
+        self.assertEqual(chapter.title, '新标题')
+        self.assertEqual(chapter.raw_content, '新的章节内容已经覆盖旧稿，并继续推进主线。')
+        self.assertEqual(chapter.generation_meta['mode'], 'regenerate')

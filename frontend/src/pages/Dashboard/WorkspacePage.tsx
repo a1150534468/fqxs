@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { message, Button } from 'antd';
+import { message, Button, Progress, Tag } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { publishChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
@@ -8,7 +8,19 @@ import { ChapterSidebar } from './ChapterSidebar';
 import { WritingCenter } from './WritingCenter';
 import { SettingsPanel } from './SettingsPanel';
 import { formatNumber } from './constants';
-import type { Chapter, KnowledgeGraphPayload, Novel, NovelSettingRecord } from './types';
+import type {
+  Chapter,
+  ChapterSummaryRecord,
+  ForeshadowItemRecord,
+  KnowledgeFactRecord,
+  KnowledgeGraphPayload,
+  Novel,
+  NovelSettingRecord,
+  PlotArcPointRecord,
+  StorylineRecord,
+  StyleProfileRecord,
+  WorkbenchHighlights,
+} from './types';
 
 interface WorkspacePageProps {
   selectedNovel: Novel | null;
@@ -24,7 +36,14 @@ interface WorkspacePageProps {
     lastUpdate: string;
   };
   settings: NovelSettingRecord[];
+  chapterSummaries: ChapterSummaryRecord[];
+  storylines: StorylineRecord[];
+  plotArcPoints: PlotArcPointRecord[];
+  knowledgeFacts: KnowledgeFactRecord[];
+  foreshadowItems: ForeshadowItemRecord[];
+  styleProfiles: StyleProfileRecord[];
   knowledgeGraph?: KnowledgeGraphPayload;
+  workbenchHighlights?: WorkbenchHighlights;
   onChapterSaved?: () => void;
 }
 
@@ -36,15 +55,73 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   chapterLoading,
   aggregatedStats,
   settings,
+  chapterSummaries,
+  storylines,
+  plotArcPoints,
+  knowledgeFacts,
+  foreshadowItems,
+  styleProfiles,
   knowledgeGraph,
+  workbenchHighlights,
   onChapterSaved,
 }) => {
   const { state: streamState, start, stop } = useChapterStream(selectedNovel?.id ?? null);
   const navigate = useNavigate();
+  const selectedChapter = selectedChapters.find((chapter) => chapter.id === selectedChapterId) ?? null;
+  const nextChapterNumber = (selectedNovel?.current_chapter ?? 0) + 1;
 
-  const handleStart = () => {
+  const handleStartContinuous = (targetChapter: number) => {
     if (!selectedNovel) { message.warning('请先选择一本书'); return; }
-    start(selectedNovel.id);
+    if (targetChapter < nextChapterNumber) {
+      message.warning(`目标章节不能小于第 ${nextChapterNumber} 章`);
+      return;
+    }
+    start(selectedNovel.id, {
+      mode: 'generate',
+      runMode: 'continuous',
+      chapterNumber: nextChapterNumber,
+      targetChapter,
+    });
+  };
+
+  const handleGenerateNext = () => {
+    if (!selectedNovel) { message.warning('请先选择一本书'); return; }
+    start(selectedNovel.id, {
+      mode: 'generate',
+      runMode: 'single',
+      chapterNumber: nextChapterNumber,
+    });
+  };
+
+  const handleContinueCurrent = () => {
+    if (!selectedNovel || !selectedChapter) {
+      message.warning('请先选择一个章节');
+      return;
+    }
+    const currentContent = selectedChapter.final_content || selectedChapter.raw_content || '';
+    if (!currentContent) {
+      message.warning('当前章节还没有可续写的正文');
+      return;
+    }
+    start(selectedNovel.id, {
+      mode: 'continue',
+      chapterNumber: selectedChapter.chapter_number,
+      chapterTitle: selectedChapter.title || `第${selectedChapter.chapter_number}章`,
+      currentContent,
+      continueLength: 1200,
+    });
+  };
+
+  const handleRegenerateCurrent = () => {
+    if (!selectedNovel || !selectedChapter) {
+      message.warning('请先选择一个章节');
+      return;
+    }
+    start(selectedNovel.id, {
+      mode: 'regenerate',
+      chapterNumber: selectedChapter.chapter_number,
+      chapterTitle: selectedChapter.title || `第${selectedChapter.chapter_number}章`,
+    });
   };
 
   const handleStop = () => {
@@ -62,14 +139,25 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     }
   };
 
-  // Refresh chapter list when a new chapter finishes streaming
-  const prevDoneChapter = React.useRef<number | null>(null);
+  // Refresh chapter list whenever a chapter is saved during streaming
+  const prevSavedEvent = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (streamState.currentChapter && streamState.currentChapter !== prevDoneChapter.current) {
-      prevDoneChapter.current = streamState.currentChapter;
+    if (
+      streamState.lastSavedEventId
+      && streamState.lastSavedEventId !== prevSavedEvent.current
+    ) {
+      prevSavedEvent.current = streamState.lastSavedEventId;
+      if (streamState.lastSavedChapterId) {
+        onSelectChapter(streamState.lastSavedChapterId);
+      }
       onChapterSaved?.();
     }
-  }, [streamState.currentChapter, onChapterSaved]);
+  }, [
+    onChapterSaved,
+    onSelectChapter,
+    streamState.lastSavedChapterId,
+    streamState.lastSavedEventId,
+  ]);
 
   const topBarStats = useMemo(() => [
     { label: '总字数', value: formatNumber(aggregatedStats.totalWords) },
@@ -79,57 +167,139 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     { label: '最近更新', value: aggregatedStats.lastUpdate !== '--' ? aggregatedStats.lastUpdate.slice(0, 10) : '--' },
   ], [aggregatedStats, selectedNovel]);
 
+  const sidebarStats = useMemo(() => {
+    const published = selectedChapters.filter((chapter) => chapter.status === 'published').length;
+    const draft = selectedChapters.filter((chapter) => chapter.status === 'draft').length;
+    const flagged = selectedChapters.filter((chapter) => {
+      const status = chapter.consistency_status?.status;
+      return status && status !== 'ok';
+    }).length;
+
+    return { published, draft, flagged };
+  }, [selectedChapters]);
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Top bar */}
-      <div className="flex items-center gap-6 px-6 py-3 bg-white border-b border-gray-200 shadow-sm">
+    <div className="flex h-screen flex-col bg-[#eef2f7]">
+      <div className="flex items-center gap-6 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
         <Button
           type="text"
           icon={<ArrowLeftOutlined />}
           size="small"
           onClick={() => navigate('/')}
-          className="text-gray-500"
+          className="text-slate-500"
         />
-        <span className="font-semibold text-gray-800 text-base">
-          {selectedNovel?.title ?? '未选择书目'}
-        </span>
-        {topBarStats.map((stat) => (
-          <div key={stat.label} className="flex flex-col items-center">
-            <span className="text-xs text-gray-400">{stat.label}</span>
-            <span className="text-sm font-medium text-gray-700">{stat.value}</span>
+        <div className="min-w-0">
+          <div className="truncate text-base font-semibold text-slate-800">
+            {selectedNovel?.title ?? '未选择书目'}
           </div>
-        ))}
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+            <span>{selectedNovel?.genre || '未分类'}</span>
+            {workbenchHighlights?.active_storyline?.name && (
+              <Tag color="cyan" className="mr-0">
+                {workbenchHighlights.active_storyline.name}
+              </Tag>
+            )}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-5">
+          {topBarStats.map((stat) => (
+            <div key={stat.label} className="flex min-w-[70px] flex-col items-center">
+              <span className="text-[11px] text-slate-400">{stat.label}</span>
+              <span className="text-sm font-medium text-slate-700">{stat.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* 3-column body */}
-      <div className="flex flex-1 min-h-0">
-        {/* Left: chapter list (240px) */}
-        <div className="w-60 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto">
-          <div className="px-3 py-2 border-b border-gray-100 text-xs font-medium text-gray-500">
-            章节列表
-          </div>
-          <ChapterSidebar
-            chapters={selectedChapters}
-            selectedChapterId={selectedChapterId}
-            loading={chapterLoading}
-            onSelect={(c) => onSelectChapter(c.id)}
-            onPublish={handlePublish}
-          />
-        </div>
+      <div className="flex flex-1 min-h-0 p-4">
+        <div className="mx-auto flex h-full w-full max-w-[1780px] min-h-0 flex-col gap-4 xl:flex-row">
+          <aside className="flex w-full flex-col gap-4 xl:w-[19.5rem] xl:flex-shrink-0">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
+                项目总览
+              </div>
+              <div className="mt-3 text-lg font-semibold text-slate-800">
+                {selectedNovel?.title ?? '未选择书目'}
+              </div>
+              <div className="mt-2 text-sm leading-6 text-slate-500">
+                {workbenchHighlights?.recommended_focus || '优先完成当前章节，再进入下一章的情节推进。'}
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>总进度</span>
+                  <span>{aggregatedStats.completionRate}%</span>
+                </div>
+                <Progress percent={aggregatedStats.completionRate} showInfo={false} strokeColor="#0ea5e9" />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                  <div className="text-[11px] text-slate-400">已发布</div>
+                  <div className="mt-1 text-base font-semibold text-slate-800">{sidebarStats.published}</div>
+                </div>
+                <div className="rounded-2xl bg-amber-50 px-3 py-2">
+                  <div className="text-[11px] text-amber-500">草稿</div>
+                  <div className="mt-1 text-base font-semibold text-amber-700">{sidebarStats.draft}</div>
+                </div>
+                <div className="rounded-2xl bg-rose-50 px-3 py-2">
+                  <div className="text-[11px] text-rose-500">待检查</div>
+                  <div className="mt-1 text-base font-semibold text-rose-700">{sidebarStats.flagged}</div>
+                </div>
+              </div>
+              <div className="mt-4 rounded-2xl bg-[#0f172a] px-4 py-3 text-slate-200">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">当前焦点</div>
+                <div className="mt-2 text-sm font-medium">
+                  第 {workbenchHighlights?.focus_chapter_number ?? selectedNovel?.current_chapter ?? 1} 章
+                </div>
+                <div className="mt-2 text-xs leading-5 text-slate-300">
+                  {workbenchHighlights?.focus_card?.mission || '围绕当前主线推进，并在章节尾部留下下一步钩子。'}
+                </div>
+              </div>
+            </div>
 
-        {/* Center: writing dispatch (flex-1) */}
-        <div className="flex-1 min-w-0 p-4 overflow-hidden flex flex-col">
-          <WritingCenter
-            novel={selectedNovel}
-            streamState={streamState}
-            onStart={handleStart}
-            onStop={handleStop}
-          />
-        </div>
+            <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
+                章节导航
+              </div>
+              <div className="h-full overflow-y-auto px-2 py-2">
+                <ChapterSidebar
+                  chapters={selectedChapters}
+                  selectedChapterId={selectedChapterId}
+                  loading={chapterLoading}
+                  onSelect={(c) => onSelectChapter(c.id)}
+                  onPublish={handlePublish}
+                />
+              </div>
+            </div>
+          </aside>
 
-        {/* Right: settings + knowledge graph (320px) */}
-        <div className="w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto p-3">
-          <SettingsPanel settings={settings} knowledgeGraph={knowledgeGraph} />
+          <main className="min-w-0 flex-1 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm xl:flex-[1.25]">
+            <WritingCenter
+              novel={selectedNovel}
+              selectedChapter={selectedChapter}
+              streamState={streamState}
+              highlights={workbenchHighlights}
+              onStartContinuous={handleStartContinuous}
+              onGenerateNext={handleGenerateNext}
+              onContinueCurrent={handleContinueCurrent}
+              onRegenerateCurrent={handleRegenerateCurrent}
+              onStop={handleStop}
+            />
+          </main>
+
+          <aside className="min-h-0 w-full overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm xl:w-[25rem] xl:flex-shrink-0">
+            <SettingsPanel
+              settings={settings}
+              chapter={selectedChapter}
+              chapterSummaries={chapterSummaries}
+              storylines={storylines}
+              plotArcPoints={plotArcPoints}
+              knowledgeFacts={knowledgeFacts}
+              foreshadowItems={foreshadowItems}
+              styleProfiles={styleProfiles}
+              workbenchHighlights={workbenchHighlights}
+              knowledgeGraph={knowledgeGraph}
+            />
+          </aside>
         </div>
       </div>
     </div>

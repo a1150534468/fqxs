@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -11,8 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.chapters.models import Chapter
-from apps.novels.models import NovelProject, NovelSetting
-from apps.tasks.models import Task
+from apps.novels.models import NovelProject
+from apps.tasks.querysets import scoped_task_queryset_for_user
 from apps.stats.models import Stats
 from apps.stats.serializers import StatsSerializer
 
@@ -53,22 +53,101 @@ def stats_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
-    """Aggregated dashboard data from all metric types."""
-    data = {}
-    for metric_type, _ in Stats.METRIC_TYPES:
-        latest = (
-            Stats.objects
-            .filter(metric_type=metric_type)
-            .order_by('-date')
-            .first()
-        )
-        if latest:
-            data[metric_type] = {
-                'date': latest.date,
-                'data': latest.metric_data,
-            }
+    """Realtime dashboard data aggregated from the current user's projects."""
+    start_date = parse_date((request.query_params.get('start_date') or '').strip())
+    end_date = parse_date((request.query_params.get('end_date') or '').strip())
 
-    return Response({'metrics': data})
+    chapters_qs = Chapter.objects.filter(
+        project__user=request.user,
+        project__is_deleted=False,
+        is_deleted=False,
+    )
+    if start_date:
+        chapters_qs = chapters_qs.filter(created_at__date__gte=start_date)
+    if end_date:
+        chapters_qs = chapters_qs.filter(created_at__date__lte=end_date)
+
+    chapters = list(chapters_qs.select_related('project'))
+    tasks_qs = scoped_task_queryset_for_user(request.user)
+    active_projects_qs = NovelProject.objects.filter(
+        user=request.user,
+        is_deleted=False,
+        status='active',
+    )
+
+    total_chapters = len(chapters)
+    success_count = sum(1 for chapter in chapters if chapter.status in {'draft', 'published'})
+    total_words = sum(chapter.word_count or 0 for chapter in chapters)
+    avg_word_count = round(total_words / total_chapters) if total_chapters else 0
+
+    total_api_calls = 0
+    total_tokens = 0
+    estimated_cost = 0.0
+    latency_values = []
+    warning_count = 0
+    risky_count = 0
+
+    for chapter in chapters:
+        generation_meta = chapter.generation_meta or {}
+        total_api_calls += int(generation_meta.get('api_calls') or (1 if generation_meta else 0))
+
+        input_tokens = int(generation_meta.get('input_tokens') or 0)
+        output_tokens = int(generation_meta.get('output_tokens') or 0)
+        chapter_tokens = input_tokens + output_tokens
+        total_tokens += chapter_tokens
+
+        if generation_meta.get('latency_ms'):
+            latency_values.append(float(generation_meta['latency_ms']) / 1000)
+
+        chapter_cost = generation_meta.get('estimated_cost')
+        if chapter_cost is None:
+            chapter_cost = round((chapter_tokens / 1000) * 0.02, 4)
+        estimated_cost += float(chapter_cost or 0)
+
+        consistency_status = chapter.consistency_status or {}
+        if consistency_status.get('status') == 'warning':
+            warning_count += 1
+        if consistency_status.get('risks'):
+            risky_count += 1
+
+    success_rate = round((success_count / total_chapters) * 100, 2) if total_chapters else 0
+    avg_generation_time = (
+        round(sum(latency_values) / len(latency_values), 2)
+        if latency_values
+        else 0
+    )
+    published_count = sum(1 for chapter in chapters if chapter.status == 'published')
+
+    response_payload = {
+        'generation': {
+            'total_chapters': total_chapters,
+            'success_rate': success_rate,
+            'avg_word_count': avg_word_count,
+        },
+        'cost': {
+            'total_api_calls': total_api_calls,
+            'total_tokens': total_tokens,
+            'estimated_cost': round(estimated_cost, 4),
+        },
+        'performance': {
+            'avg_generation_time': avg_generation_time,
+            'current_queue': tasks_qs.filter(status__in=['pending', 'running', 'retry']).count(),
+        },
+        'novels': {
+            'active_count': active_projects_qs.count(),
+            'total_chapters_published': published_count,
+        },
+        'quality': {
+            'warning_count': warning_count,
+            'chapters_with_risk': risky_count,
+            'consistency_ok_rate': round(
+                ((total_chapters - warning_count) / total_chapters) * 100,
+                2,
+            ) if total_chapters else 0,
+        },
+    }
+
+    return Response(response_payload)
 
 
 REVENUE_PER_WORD = 0.002  # 0.2 分/字的粗略估算
@@ -173,22 +252,7 @@ def recent_generations(request):
 @permission_classes([IsAuthenticated])
 def stats_tasks_summary(request):
     """Provide queue summary and latest task snapshots for dashboard widgets."""
-    project_ids = NovelProject.objects.filter(
-        user=request.user,
-        is_deleted=False,
-    ).values_list('id', flat=True)
-    chapter_ids = Chapter.objects.filter(
-        project__user=request.user,
-        project__is_deleted=False,
-        is_deleted=False,
-    ).values_list('id', flat=True)
-
-    tasks = Task.objects.filter(
-        Q(related_type='project', related_id__in=project_ids)
-        | Q(related_type='chapter', related_id__in=chapter_ids)
-        | Q(related_type__isnull=True)
-        | Q(related_id__isnull=True)
-    )
+    tasks = scoped_task_queryset_for_user(request.user)
 
     total = tasks.count()
     status_counts = {

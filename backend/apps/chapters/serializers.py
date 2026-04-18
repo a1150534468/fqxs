@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 
-from apps.chapters.models import Chapter
+from apps.chapters.models import Chapter, ChapterSummary
 from apps.novels.models import NovelProject
 
 PUBLISH_STATUS_CHOICES = ('draft', 'published', 'failed')
@@ -43,6 +43,11 @@ class ChapterSerializer(serializers.ModelSerializer):
             'final_content',
             'word_count',
             'generation_prompt',
+            'generation_meta',
+            'context_snapshot',
+            'summary',
+            'open_threads',
+            'consistency_status',
             'llm_provider',
             'status',
             'publish_status',
@@ -132,3 +137,24 @@ class ChapterSerializer(serializers.ModelSerializer):
                 validated_data.get('final_content')
             )
         return super().update(instance, validated_data)
+
+
+class ChapterSummarySerializer(serializers.ModelSerializer):
+    """Serializer for chapter summary assets."""
+
+    chapter_number = serializers.IntegerField(source='chapter.chapter_number', read_only=True)
+
+    class Meta:
+        model = ChapterSummary
+        fields = (
+            'id',
+            'project',
+            'chapter',
+            'chapter_number',
+            'summary',
+            'key_events',
+            'open_threads',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields

@@ -30,6 +30,11 @@ export const getGenerationStatus = async (id: number | string) => {
   return response.data;
 };
 
+export const getWorkbenchContext = async (projectId: number | string) => {
+  const response = await request.get(`/workbench/${projectId}/context/`);
+  return response.data;
+};
+
 export const startAutoGeneration = async (id: number | string, data: { frequency: string }) => {
   const response = await request.post(`/novels/${id}/start-auto-generation/`, data);
   return response.data;

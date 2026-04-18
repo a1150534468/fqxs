@@ -9,6 +9,7 @@ import httpx
 
 from config import settings
 from services.llm_provider_manager import llm_provider_manager
+from services.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -309,14 +310,16 @@ class LLMClient:
         chapter_number: int,
         chapter_title: str,
         outline_context: str = "",
+        context_payload: dict | None = None,
         user_token: str | None = None,
     ):
         if await self._should_use_mock(user_token):
             return await self._mock_generate_chapter(
-                project_id, chapter_number, chapter_title, outline_context
+                project_id, chapter_number, chapter_title, outline_context, context_payload
             )
         return await self._real_generate_chapter(
             project_id, chapter_number, chapter_title, outline_context,
+            context_payload=context_payload,
             user_token=user_token,
         )
 
@@ -326,6 +329,7 @@ class LLMClient:
         chapter_number: int,
         chapter_title: str,
         outline_context: str = "",
+        context_payload: dict | None = None,
         user_token: str | None = None,
     ):
         """Async generator yielding (type, data) tuples for chapter streaming.
@@ -339,7 +343,7 @@ class LLMClient:
 
         if use_mock:
             async for item in self._mock_generate_chapter_stream(
-                project_id, chapter_number, chapter_title, outline_context
+                project_id, chapter_number, chapter_title, outline_context, context_payload
             ):
                 yield item
             return
@@ -355,18 +359,17 @@ class LLMClient:
 
         if not providers:
             async for item in self._mock_generate_chapter_stream(
-                project_id, chapter_number, chapter_title, outline_context
+                project_id, chapter_number, chapter_title, outline_context, context_payload
             ):
                 yield item
             return
 
-        user_msg = (
-            f"项目ID: {project_id}\n"
-            f"章节：第{chapter_number}章《{chapter_title}》\n"
+        user_msg = PromptBuilder.build_chapter_context_prompt(
+            chapter_number=chapter_number,
+            chapter_title=chapter_title,
+            context_payload=context_payload,
+            outline_context=outline_context,
         )
-        if outline_context:
-            user_msg += f"大纲参考：{outline_context}\n"
-        user_msg += "请写出该章节的正文内容。"
 
         full_text = ""
         try:
@@ -383,7 +386,7 @@ class LLMClient:
             logger.warning(f"[chapter_stream] Real LLM failed: {e}, falling back to mock")
             if not full_text:
                 async for item in self._mock_generate_chapter_stream(
-                    project_id, chapter_number, chapter_title, outline_context
+                    project_id, chapter_number, chapter_title, outline_context, context_payload
                 ):
                     yield item
                 return
@@ -396,10 +399,11 @@ class LLMClient:
         chapter_number: int,
         chapter_title: str,
         outline_context: str = "",
+        context_payload: dict | None = None,
     ):
         """Mock streaming chapter generation — yields chunks then done."""
         content, word_count = await self._mock_generate_chapter(
-            project_id, chapter_number, chapter_title, outline_context
+            project_id, chapter_number, chapter_title, outline_context, context_payload
         )
         chunk_size = 8
         for i in range(0, len(content), chunk_size):
@@ -592,15 +596,15 @@ class LLMClient:
         chapter_number: int,
         chapter_title: str,
         outline_context: str = "",
+        context_payload: dict | None = None,
         user_token: str | None = None,
     ):
-        user_msg = (
-            f"项目ID: {project_id}\n"
-            f"章节：第{chapter_number}章《{chapter_title}》\n"
+        user_msg = PromptBuilder.build_chapter_context_prompt(
+            chapter_number=chapter_number,
+            chapter_title=chapter_title,
+            context_payload=context_payload,
+            outline_context=outline_context,
         )
-        if outline_context:
-            user_msg += f"大纲参考：{outline_context}\n"
-        user_msg += "请写出该章节的正文内容。"
         content = await self._call_llm(self.SYSTEM_CHAPTER, user_msg, user_token=user_token)
         return content, self._count_words(content)
 
@@ -907,6 +911,7 @@ class LLMClient:
         chapter_number: int,
         chapter_title: str,
         outline_context: str = "",
+        context_payload: dict | None = None,
     ):
         await asyncio.sleep(0.08)
 
@@ -915,12 +920,34 @@ class LLMClient:
             lower=700,
             upper=3200,
         )
-        context_snippet = outline_context[:80] if outline_context else "主线进入关键转折阶段。"
+        payload = context_payload or {}
+        chapter_goal = (payload.get('chapter_goal') or '').strip()
+        context_snippet = chapter_goal[:80] if chapter_goal else (
+            outline_context[:80] if outline_context else "主线进入关键转折阶段。"
+        )
+        style_hint = (payload.get('style_profile') or {}).get('content', '')
+        focus_card = payload.get('focus_card') or {}
+        micro_beats = payload.get('micro_beats') or []
+        must_payoff = (focus_card.get('must_payoff') or [])[:2]
 
         paragraphs = [
             f"第{chapter_number}章《{chapter_title}》",
             f"项目{project_id}的故事推进到这一刻，{context_snippet}",
+            f"文风约束：{style_hint[:48] or '保持悬念推进与角色一致性。'}",
         ]
+        if focus_card.get('mission'):
+            paragraphs.append(f"本章任务是：{focus_card['mission']}")
+        if focus_card.get('conflict'):
+            paragraphs.append(f"角色此刻面临的核心冲突是：{focus_card['conflict']}")
+        if must_payoff:
+            paragraphs.append(f"本章必须触碰的旧线索包括：{'、'.join(must_payoff)}。")
+
+        for beat in micro_beats[:4]:
+            paragraphs.append(
+                f"{beat.get('label', '节拍')}：{beat.get('objective', '')}"
+                f" 本段重点放在{beat.get('focus', 'scene')}，"
+                f"目标篇幅约{beat.get('target_words', 600)}字。"
+            )
 
         line_iter = itertools.cycle(zip(self._opening_lines, self._turning_lines, self._closing_lines))
         while self._count_words("\n".join(paragraphs)) < target_length:
@@ -1150,6 +1177,109 @@ class LLMClient:
 
         yield ("done", result)
 
+    async def analyze_chapter_summary(
+        self,
+        project_id: int,
+        chapter_number: int,
+        content: str,
+        context_payload: dict | None = None,
+    ) -> dict:
+        sentences = self._split_sentences(content)
+        summary_parts: list[str] = []
+        for sentence in sentences:
+            if sum(len(item) for item in summary_parts) + len(sentence) > 220 and summary_parts:
+                break
+            summary_parts.append(sentence)
+        open_threads = [sentence[:180] for sentence in sentences if '？' in sentence or '?' in sentence][:5]
+        return {
+            'summary': ''.join(summary_parts)[:240],
+            'key_events': [sentence[:180] for sentence in sentences[:3]],
+            'open_threads': open_threads,
+        }
+
+    async def analyze_facts(
+        self,
+        project_id: int,
+        chapter_number: int,
+        content: str,
+        context_payload: dict | None = None,
+    ) -> dict:
+        facts = []
+        for item in (context_payload or {}).get('knowledge_facts', [])[:8]:
+            subject = item.get('subject') or ''
+            if subject and subject in content:
+                facts.append({
+                    'subject': subject,
+                    'predicate': item.get('predicate') or '关联事实',
+                    'object': item.get('object') or f'第{chapter_number}章涉及',
+                    'source_excerpt': next((sentence[:220] for sentence in self._split_sentences(content) if subject in sentence), ''),
+                    'confidence': 0.78,
+                })
+        if not facts:
+            for sentence in self._split_sentences(content)[:3]:
+                facts.append({
+                    'subject': f'第{chapter_number}章',
+                    'predicate': '关键事件',
+                    'object': sentence[:60],
+                    'source_excerpt': sentence[:220],
+                    'confidence': 0.66,
+                })
+        return {'facts': facts[:8]}
+
+    async def analyze_style_drift(
+        self,
+        project_id: int,
+        chapter_number: int,
+        content: str,
+        context_payload: dict | None = None,
+    ) -> dict:
+        sentences = self._split_sentences(content)
+        average_sentence_length = round(sum(len(sentence) for sentence in sentences) / max(len(sentences), 1))
+        exclamations = content.count('！') + content.count('!')
+        risk_level = 'low'
+        reasons = []
+        if average_sentence_length < 18:
+            risk_level = 'medium'
+            reasons.append('句子偏短，节奏较急')
+        if exclamations > max(2, len(sentences) // 2):
+            risk_level = 'high'
+            reasons.append('感叹号密度偏高，可能影响文风稳定性')
+        tone = (((context_payload or {}).get('style_profile') or {}).get('structured_data') or {}).get('tone')
+        if tone:
+            reasons.append(f'基线基调：{tone}')
+        score = 90 if risk_level == 'low' else 72 if risk_level == 'medium' else 55
+        return {
+            'score': score,
+            'risk_level': risk_level,
+            'reasons': reasons,
+            'suggestions': ['保留核心语气，但适度拉开句长层次', '强化环境与动作描写，减少单一情绪堆叠'],
+        }
+
+    async def analyze_consistency(
+        self,
+        project_id: int,
+        chapter_number: int,
+        content: str,
+        context_payload: dict | None = None,
+    ) -> dict:
+        conflicts = []
+        risks = []
+        for fact in (context_payload or {}).get('knowledge_facts', [])[:6]:
+            subject = fact.get('subject') or ''
+            if subject and subject not in content:
+                risks.append(f'未触达关键实体：{subject}')
+        if len(content) < 800:
+            risks.append('章节篇幅偏短，信息可能不足')
+        suggestions = ['发布前人工核查角色状态与地点连续性']
+        if not (context_payload or {}).get('recent_summaries'):
+            suggestions.append('补充最近章节摘要后再继续增强上下文')
+        return {
+            'status': 'warning' if risks or conflicts else 'ok',
+            'conflicts': conflicts,
+            'risks': risks[:6],
+            'suggestions': suggestions[:4],
+        }
+
     @staticmethod
     def _count_words(content: str) -> int:
         return len(NON_WHITESPACE_PATTERN.findall(content or ""))
@@ -1157,6 +1287,10 @@ class LLMClient:
     @staticmethod
     def _clamp(value: int, lower: int, upper: int) -> int:
         return max(lower, min(upper, int(value)))
+
+    @staticmethod
+    def _split_sentences(content: str) -> list[str]:
+        return [part.strip() for part in re.split(r'(?<=[。！？?!])', content or '') if part.strip()]
 
 
 llm_client = LLMClient()

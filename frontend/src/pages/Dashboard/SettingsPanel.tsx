@@ -1,8 +1,19 @@
 import React, { useMemo } from 'react';
-import { Empty, Tabs } from 'antd';
+import { Empty, Tabs, Tag } from 'antd';
 import MDEditor from '@uiw/react-md-editor';
 import { InsightGraph } from '../../components/charts/InsightGraph';
-import type { KnowledgeGraphPayload, NovelSettingRecord } from './types';
+import type {
+  Chapter,
+  ChapterSummaryRecord,
+  ForeshadowItemRecord,
+  KnowledgeFactRecord,
+  KnowledgeGraphPayload,
+  NovelSettingRecord,
+  PlotArcPointRecord,
+  StorylineRecord,
+  StyleProfileRecord,
+  WorkbenchHighlights,
+} from './types';
 import { WIZARD_STEP_TYPES } from './constants';
 
 const STEP_LABELS: Record<string, string> = {
@@ -16,59 +27,402 @@ const STEP_LABELS: Record<string, string> = {
 
 interface SettingsPanelProps {
   settings: NovelSettingRecord[];
+  chapter: Chapter | null;
+  chapterSummaries: ChapterSummaryRecord[];
+  storylines: StorylineRecord[];
+  plotArcPoints: PlotArcPointRecord[];
+  knowledgeFacts: KnowledgeFactRecord[];
+  foreshadowItems: ForeshadowItemRecord[];
+  styleProfiles: StyleProfileRecord[];
+  workbenchHighlights?: WorkbenchHighlights;
   knowledgeGraph?: KnowledgeGraphPayload;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, knowledgeGraph }) => {
+const styleRiskColor: Record<string, string> = {
+  low: 'green',
+  medium: 'orange',
+  high: 'red',
+  unknown: 'default',
+};
+
+const PanelCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="mb-3 text-xs font-medium uppercase tracking-[0.22em] text-slate-400">{title}</div>
+    {children}
+  </div>
+);
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  settings,
+  chapter,
+  chapterSummaries,
+  storylines,
+  plotArcPoints,
+  knowledgeFacts,
+  foreshadowItems,
+  styleProfiles,
+  workbenchHighlights,
+  knowledgeGraph,
+}) => {
   const settingsMap = useMemo(() => {
     const map: Record<string, NovelSettingRecord> = {};
-    settings.forEach((s) => { map[s.setting_type] = s; });
+    settings.forEach((item) => {
+      map[item.setting_type] = item;
+    });
     return map;
   }, [settings]);
 
-  const tabItems = WIZARD_STEP_TYPES.map((type) => ({
-    key: type,
-    label: STEP_LABELS[type] || type,
-    children: settingsMap[type] ? (
-      <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
-        <MDEditor.Markdown source={settingsMap[type].content || '暂无内容'} />
-      </div>
-    ) : (
-      <Empty description="暂未生成，请先通过向导完成设定" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-    ),
-  }));
+  const selectedSummary = useMemo(() => {
+    if (!chapter) return chapterSummaries[chapterSummaries.length - 1];
+    return chapterSummaries.find((item) => item.chapter === chapter.id)
+      || chapterSummaries.find((item) => item.chapter_number === chapter.chapter_number)
+      || chapterSummaries[chapterSummaries.length - 1];
+  }, [chapter, chapterSummaries]);
+
+  const latestStyleAnalysis = useMemo(
+    () => styleProfiles.find((item) => item.profile_type === 'chapter_analysis'),
+    [styleProfiles],
+  );
 
   const graphProjects = useMemo(() => {
-    if (knowledgeGraph?.nodes) {
-      const plotNodes = knowledgeGraph.nodes.filter((n) => n.category === 'plot');
-      if (plotNodes.length) return plotNodes.map((n) => ({ title: n.name, status: n.category }));
-    }
-    return [];
+    if (!knowledgeGraph?.nodes) return [];
+    const plotNodes = knowledgeGraph.nodes.filter((node) => node.category === 'plot');
+    return plotNodes.map((node) => ({ title: node.name, status: node.category }));
   }, [knowledgeGraph]);
 
   const graphInspirations = useMemo(() => {
-    if (knowledgeGraph?.nodes) {
-      const chars = knowledgeGraph.nodes.filter((n) => n.category === 'character');
-      if (chars.length) return chars.map((n) => ({ title: n.name, hot_score: Number(n.info?.influence) || 0 }));
-    }
-    return [];
+    if (!knowledgeGraph?.nodes) return [];
+    const characterNodes = knowledgeGraph.nodes.filter((node) => node.category === 'character');
+    return characterNodes.map((node) => ({
+      title: node.name,
+      hot_score: Number(node.info?.influence) || 0,
+    }));
   }, [knowledgeGraph]);
 
+  const settingsTabItems = WIZARD_STEP_TYPES.map((type) => ({
+    key: type,
+    label: STEP_LABELS[type] || type,
+    children: settingsMap[type] ? (
+      <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
+        <MDEditor.Markdown source={settingsMap[type].content || '暂无内容'} style={{ background: 'transparent' }} />
+      </div>
+    ) : (
+      <Empty description="暂未生成，请先完成向导设定" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+    ),
+  }));
+
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* Settings tabs */}
-      <div className="rounded-lg border border-gray-200 bg-white p-3">
-        <Tabs size="small" items={tabItems} />
+    <div className="flex h-full flex-col">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Intelligence Panels</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">右侧情报区</h3>
+          {workbenchHighlights?.quality_snapshot && (
+            <Tag color={styleRiskColor[workbenchHighlights.quality_snapshot.style_risk || 'unknown']}>
+              风格风险 {workbenchHighlights.quality_snapshot.style_risk || 'unknown'}
+            </Tag>
+          )}
+          {workbenchHighlights?.quality_snapshot?.consistency_status && (
+            <Tag color={workbenchHighlights.quality_snapshot.consistency_status === 'ok' ? 'green' : 'orange'}>
+              一致性 {workbenchHighlights.quality_snapshot.consistency_status}
+            </Tag>
+          )}
+        </div>
       </div>
 
-      {/* Knowledge graph */}
-      <div className="rounded-lg border border-gray-200 bg-white p-3">
-        <div className="text-xs font-medium text-gray-500 mb-2">知识图谱</div>
-        {graphProjects.length || graphInspirations.length ? (
-          <InsightGraph projects={graphProjects} inspirations={graphInspirations} />
-        ) : (
-          <Empty description="暂无图谱数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        )}
+      <div className="flex-1 min-h-0 overflow-hidden p-4">
+        <Tabs
+          className="h-full"
+          items={[
+            {
+              key: 'settings',
+              label: '设定',
+              children: (
+                <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="设定总览">
+                    <Tabs size="small" items={settingsTabItems} />
+                  </PanelCard>
+                  <PanelCard title="当前主线">
+                    {workbenchHighlights?.active_storyline ? (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium text-slate-800">
+                            {workbenchHighlights.active_storyline.name}
+                          </div>
+                          <Tag color={workbenchHighlights.active_storyline.status === 'active' ? 'green' : 'default'}>
+                            {workbenchHighlights.active_storyline.status}
+                          </Tag>
+                        </div>
+                        <div className="mt-2 text-sm leading-6 text-slate-600">
+                          {workbenchHighlights.active_storyline.description || '暂无描述'}
+                        </div>
+                      </div>
+                    ) : (
+                      <Empty description="暂无主线信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+                </div>
+              ),
+            },
+            {
+              key: 'assets',
+              label: '资产',
+              children: (
+                <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="章节摘要">
+                    {selectedSummary ? (
+                      <div className="space-y-3 text-sm">
+                        <div>
+                          <div className="text-xs text-slate-400">摘要</div>
+                          <div className="mt-1 leading-6 text-slate-700">{selectedSummary.summary || '暂无摘要'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400">关键事件</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedSummary.key_events?.length
+                              ? selectedSummary.key_events.map((event, index) => (
+                                <Tag key={`${event}-${index}`} color="blue" className="mr-0">{event}</Tag>
+                              ))
+                              : <span className="text-slate-300">暂无关键事件</span>}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400">开放线索</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedSummary.open_threads?.length
+                              ? selectedSummary.open_threads.map((item, index) => (
+                                <Tag key={`${item}-${index}`} color="gold" className="mr-0">{item}</Tag>
+                              ))
+                              : <span className="text-slate-300">暂无开放线索</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <Empty description="暂无章节摘要" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="故事线与情节点">
+                    {storylines.length || plotArcPoints.length ? (
+                      <div className="space-y-3">
+                        {storylines.slice(0, 4).map((item) => (
+                          <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-medium text-slate-800">{item.name}</div>
+                              <Tag color={item.status === 'active' ? 'green' : 'default'} className="mr-0">
+                                {item.status}
+                              </Tag>
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">{item.description || '暂无描述'}</div>
+                          </div>
+                        ))}
+                        {plotArcPoints.slice(0, 6).map((item) => (
+                          <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 px-4 py-3">
+                            <div>
+                              <div className="text-sm font-medium text-slate-800">
+                                第 {item.chapter_number} 章 · {item.description}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-400">
+                                {item.related_storyline_name || item.point_type}
+                              </div>
+                            </div>
+                            <Tag color="purple" className="mr-0">
+                              张力 {item.tension_level}
+                            </Tag>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无故事资产" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="事实与伏笔">
+                    <div className="space-y-4">
+                      <div>
+                        <div className="mb-2 text-xs text-slate-400">知识事实</div>
+                        {knowledgeFacts.length ? (
+                          <div className="space-y-2">
+                            {knowledgeFacts.slice(0, 6).map((fact) => (
+                              <div key={fact.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                <div className="text-slate-800">{fact.subject} {fact.predicate} {fact.object}</div>
+                                <div className="mt-1 text-[11px] text-slate-400">
+                                  置信度 {Math.round((fact.confidence || 0) * 100)}%
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-slate-300">暂无知识事实</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="mb-2 text-xs text-slate-400">伏笔账本</div>
+                        {foreshadowItems.length ? (
+                          <div className="space-y-2">
+                            {foreshadowItems.slice(0, 6).map((item) => (
+                              <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="font-medium text-slate-800">{item.title}</div>
+                                  <Tag
+                                    color={item.status === 'open' ? 'gold' : item.status === 'resolved' ? 'green' : 'default'}
+                                    className="mr-0"
+                                  >
+                                    {item.status}
+                                  </Tag>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-400">
+                                  预期回收章节 {item.expected_payoff_chapter || '--'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-slate-300">暂无伏笔项</div>
+                        )}
+                      </div>
+                    </div>
+                  </PanelCard>
+                </div>
+              ),
+            },
+            {
+              key: 'quality',
+              label: '质检',
+              children: (
+                <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="连续性警报">
+                    {workbenchHighlights?.continuity_alerts?.length ? (
+                      <div className="space-y-3">
+                        {workbenchHighlights.continuity_alerts.map((item) => (
+                          <div key={`${item.level}-${item.title}`} className="rounded-2xl border border-slate-100 px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Tag color={item.level === 'critical' ? 'red' : item.level === 'warning' ? 'orange' : 'blue'} className="mr-0">
+                                {item.level}
+                              </Tag>
+                              <div className="font-medium text-slate-800">{item.title}</div>
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无连续性警报" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="风格与一致性">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">最新风格分析</div>
+                        {latestStyleAnalysis ? (
+                          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium text-slate-800">
+                                第 {latestStyleAnalysis.structured_data?.chapter_number || '--'} 章
+                              </span>
+                              <Tag color={styleRiskColor[latestStyleAnalysis.structured_data?.risk_level || 'unknown']} className="mr-0">
+                                {latestStyleAnalysis.structured_data?.risk_level || 'unknown'}
+                              </Tag>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                              平均句长 {latestStyleAnalysis.structured_data?.average_sentence_length || '--'}
+                              {' · '}
+                              对话密度 {latestStyleAnalysis.structured_data?.dialogue_density || '--'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">暂无风格分析</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">当前章节一致性</div>
+                        {chapter?.consistency_status && Object.keys(chapter.consistency_status).length ? (
+                          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium text-slate-800">状态</span>
+                              <Tag color={chapter.consistency_status.status === 'ok' ? 'green' : 'orange'} className="mr-0">
+                                {chapter.consistency_status.status}
+                              </Tag>
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">
+                              {(chapter.consistency_status.risks || []).length
+                                ? (chapter.consistency_status.risks || []).join('；')
+                                : '暂无明显风险'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">暂无一致性检查结果</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">待优先回收</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {workbenchHighlights?.due_foreshadow_items?.length
+                            ? workbenchHighlights.due_foreshadow_items.map((item) => (
+                              <Tag key={item.id} color="gold" className="mr-0">
+                                {item.title}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无紧迫伏笔</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+                </div>
+              ),
+            },
+            {
+              key: 'graph',
+              label: '图谱',
+              children: (
+                <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="工作焦点">
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">推荐焦点</div>
+                        <div className="mt-1 font-medium text-slate-800">
+                          {workbenchHighlights?.recommended_focus || '围绕当前主线推进章节。'}
+                        </div>
+                      </div>
+                      {workbenchHighlights?.focus_card?.must_keep?.length ? (
+                        <div>
+                          <div className="text-xs text-slate-400">必须保持</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {workbenchHighlights.focus_card.must_keep.map((item) => (
+                              <Tag key={item} color="blue" className="mr-0">{item}</Tag>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {workbenchHighlights?.nearest_plot_point && (
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                          <div className="font-medium text-slate-800">
+                            第 {workbenchHighlights.nearest_plot_point.chapter_number} 章情节点
+                          </div>
+                          <div className="mt-2 text-sm leading-6 text-slate-600">
+                            {workbenchHighlights.nearest_plot_point.description}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="知识图谱">
+                    {graphProjects.length || graphInspirations.length ? (
+                      <InsightGraph projects={graphProjects} inspirations={graphInspirations} />
+                    ) : (
+                      <Empty description="暂无图谱数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   );

@@ -10,12 +10,17 @@ from models.inspiration_schemas import (
 from models.schemas import (
     ChapterRequest,
     ChapterResponse,
+    ChapterAnalysisRequest,
+    ChapterSummaryAnalysisResponse,
     ContinueRequest,
     ContinueResponse,
+    ConsistencyAnalysisResponse,
+    KnowledgeFactAnalysisResponse,
     OutlineRequest,
     OutlineResponse,
     SettingGenerateRequest,
     SettingGenerateResponse,
+    StyleDriftAnalysisResponse,
 )
 from services.llm_client import llm_client
 
@@ -54,6 +59,7 @@ async def generate_chapter(
         chapter_number=payload.chapter_number,
         chapter_title=payload.chapter_title,
         outline_context=payload.outline_context,
+        context_payload=payload.context_payload,
         user_token=token,
     )
     return ChapterResponse(content=content, word_count=word_count)
@@ -118,3 +124,55 @@ async def generate_setting(
         user_token=token,
     )
     return SettingGenerateResponse(**result)
+
+
+@router.post("/analyze/chapter-summary", response_model=ChapterSummaryAnalysisResponse)
+async def analyze_chapter_summary(
+    payload: ChapterAnalysisRequest,
+) -> ChapterSummaryAnalysisResponse:
+    result = await llm_client.analyze_chapter_summary(
+        project_id=payload.project_id,
+        chapter_number=payload.chapter_number,
+        content=payload.content,
+        context_payload=payload.context_payload,
+    )
+    return ChapterSummaryAnalysisResponse(**result)
+
+
+@router.post("/analyze/facts", response_model=KnowledgeFactAnalysisResponse)
+async def analyze_facts(
+    payload: ChapterAnalysisRequest,
+) -> KnowledgeFactAnalysisResponse:
+    result = await llm_client.analyze_facts(
+        project_id=payload.project_id,
+        chapter_number=payload.chapter_number,
+        content=payload.content,
+        context_payload=payload.context_payload,
+    )
+    return KnowledgeFactAnalysisResponse(**result)
+
+
+@router.post("/analyze/style-drift", response_model=StyleDriftAnalysisResponse)
+async def analyze_style_drift(
+    payload: ChapterAnalysisRequest,
+) -> StyleDriftAnalysisResponse:
+    result = await llm_client.analyze_style_drift(
+        project_id=payload.project_id,
+        chapter_number=payload.chapter_number,
+        content=payload.content,
+        context_payload=payload.context_payload,
+    )
+    return StyleDriftAnalysisResponse(**result)
+
+
+@router.post("/analyze/consistency", response_model=ConsistencyAnalysisResponse)
+async def analyze_consistency(
+    payload: ChapterAnalysisRequest,
+) -> ConsistencyAnalysisResponse:
+    result = await llm_client.analyze_consistency(
+        project_id=payload.project_id,
+        chapter_number=payload.chapter_number,
+        content=payload.content,
+        context_payload=payload.context_payload,
+    )
+    return ConsistencyAnalysisResponse(**result)

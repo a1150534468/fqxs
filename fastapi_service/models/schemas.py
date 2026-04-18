@@ -23,11 +23,51 @@ class ChapterRequest(APIBaseModel):
     chapter_number: int = Field(..., ge=1)
     chapter_title: str = Field(..., min_length=1, max_length=200)
     outline_context: str = Field(default="", max_length=10000)
+    context_payload: dict = Field(default_factory=dict)
 
 
 class ChapterResponse(APIBaseModel):
     content: str
     word_count: int
+
+
+class ChapterAnalysisRequest(APIBaseModel):
+    project_id: int = Field(..., ge=1)
+    chapter_number: int = Field(..., ge=1)
+    content: str = Field(..., min_length=1, max_length=80000)
+    context_payload: dict = Field(default_factory=dict)
+
+
+class ChapterSummaryAnalysisResponse(APIBaseModel):
+    summary: str
+    key_events: list[str] = []
+    open_threads: list[str] = []
+
+
+class KnowledgeFactItem(APIBaseModel):
+    subject: str
+    predicate: str
+    object: str
+    source_excerpt: str = ""
+    confidence: float = 0.0
+
+
+class KnowledgeFactAnalysisResponse(APIBaseModel):
+    facts: list[KnowledgeFactItem] = []
+
+
+class StyleDriftAnalysisResponse(APIBaseModel):
+    score: int
+    risk_level: str
+    reasons: list[str] = []
+    suggestions: list[str] = []
+
+
+class ConsistencyAnalysisResponse(APIBaseModel):
+    status: str
+    conflicts: list[str] = []
+    risks: list[str] = []
+    suggestions: list[str] = []
 
 
 class ContinueRequest(APIBaseModel):

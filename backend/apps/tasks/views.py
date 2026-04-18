@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.tasks.models import Task
+from apps.tasks.querysets import scoped_task_queryset_for_user
 from apps.tasks.serializers import TaskSerializer
 
 
@@ -19,7 +19,7 @@ class TaskViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Return filtered tasks."""
-        queryset = Task.objects.all().order_by('-created_at')
+        queryset = scoped_task_queryset_for_user(self.request.user).order_by('-created_at')
 
         # Filter by task_type
         task_type = self.request.query_params.get('task_type', '').strip()
@@ -49,8 +49,16 @@ class TaskViewSet(viewsets.ReadOnlyModelViewSet):
 @permission_classes([IsAuthenticated])
 def task_status(request, task_id):
     """Query Celery task state and cached result by task id."""
+    task_record = (
+        scoped_task_queryset_for_user(request.user)
+        .filter(celery_task_id=task_id)
+        .order_by('-id')
+        .first()
+    )
+    if task_record is None:
+        return Response({'detail': 'Not found.'}, status=404)
+
     async_result = AsyncResult(task_id)
-    task_record = Task.objects.filter(celery_task_id=task_id).order_by('-id').first()
 
     response_payload = {
         'task_id': task_id,
@@ -81,7 +89,7 @@ class TaskPagination(PageNumberPagination):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def task_list(request):
-    queryset = Task.objects.all().order_by('-created_at')
+    queryset = scoped_task_queryset_for_user(request.user).order_by('-created_at')
 
     task_type = request.query_params.get('task_type', '').strip()
     if task_type:

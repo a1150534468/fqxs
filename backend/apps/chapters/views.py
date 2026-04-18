@@ -12,8 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.chapters.models import Chapter
+from apps.chapters.models import Chapter, ChapterSummary
 from apps.chapters.serializers import ChapterSerializer
+from apps.chapters.services.analysis import analyze_chapter_assets
+from apps.chapters.services.post_processing import build_chapter_summary_payload
 from apps.novels.models import NovelProject
 from apps.tasks.models import Task
 from celery_tasks.ai_tasks import generate_chapter_async
@@ -178,6 +180,18 @@ class ChapterGenerateAsyncRequestSerializer(serializers.Serializer):
     chapter_title = serializers.CharField(max_length=200)
 
 
+class GenerateFromWSRequestSerializer(serializers.Serializer):
+    """Payload schema for the Django callback used by WebSocket generation."""
+
+    project_id = serializers.IntegerField(min_value=1)
+    chapter_number = serializers.IntegerField(min_value=1)
+    chapter_title = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    content = serializers.CharField(allow_blank=True)
+    word_count = serializers.IntegerField(min_value=0, required=False, default=0)
+    generation_meta = serializers.JSONField(required=False)
+    context_snapshot = serializers.JSONField(required=False)
+
+
 class ChapterGenerateAsyncView(APIView):
     """Trigger async chapter generation task via Celery."""
 
@@ -236,33 +250,53 @@ class GenerateFromWSView(APIView):
 
     def post(self, request):
         from django.db import transaction
-        project_id = request.data.get('project_id')
-        content = request.data.get('content', '')
-        word_count = request.data.get('word_count', 0)
 
-        if not project_id:
-            return Response({'error': 'project_id required'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = GenerateFromWSRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        project_id = serializer.validated_data['project_id']
+        chapter_number = serializer.validated_data['chapter_number']
+        chapter_title = serializer.validated_data.get('chapter_title') or f'第{chapter_number}章'
+        content = serializer.validated_data.get('content', '')
+        word_count = serializer.validated_data.get('word_count') or len(
+            [char for char in content if not char.isspace()]
+        )
+        generation_meta = serializer.validated_data.get('generation_meta') or {}
+        context_snapshot = serializer.validated_data.get('context_snapshot') or {}
+        summary_payload = build_chapter_summary_payload(content)
 
         try:
             with transaction.atomic():
                 project = NovelProject.objects.select_for_update().get(
                     id=project_id, user=request.user, is_deleted=False
                 )
-                next_number = project.chapters.filter(is_deleted=False).count() + 1
                 chapter, _ = Chapter.objects.update_or_create(
                     project=project,
-                    chapter_number=next_number,
+                    chapter_number=chapter_number,
                     defaults={
-                        'title': f'第{next_number}章',
+                        'title': chapter_title,
                         'raw_content': content,
                         'final_content': content,
                         'word_count': word_count,
+                        'generation_meta': generation_meta,
+                        'context_snapshot': context_snapshot,
+                        'summary': summary_payload['summary'],
+                        'open_threads': summary_payload['open_threads'],
+                        'consistency_status': {},
                         'status': 'draft',
                         'generated_at': timezone.now(),
                         'is_deleted': False,
                     },
                 )
-                project.current_chapter = next_number
+                ChapterSummary.objects.update_or_create(
+                    project=project,
+                    chapter=chapter,
+                    defaults=summary_payload,
+                )
+                analysis_payload = analyze_chapter_assets(project, chapter, content)
+                chapter.consistency_status = analysis_payload['consistency_status']
+                chapter.save(update_fields=['consistency_status', 'updated_at'])
+                project.current_chapter = max(project.current_chapter, chapter_number)
                 project.last_update_at = timezone.now()
                 project.save(update_fields=['current_chapter', 'last_update_at', 'updated_at'])
         except NovelProject.DoesNotExist:

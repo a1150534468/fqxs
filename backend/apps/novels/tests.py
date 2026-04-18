@@ -8,7 +8,16 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.inspirations.models import Inspiration
-from apps.novels.models import NovelProject
+from apps.chapters.models import Chapter, ChapterSummary
+from apps.novels.models import (
+    ForeshadowItem,
+    KnowledgeFact,
+    NovelProject,
+    NovelSetting,
+    PlotArcPoint,
+    Storyline,
+    StyleProfile,
+)
 
 User = get_user_model()
 
@@ -108,6 +117,8 @@ class NovelProjectAPITest(TestCase):
         self.list_url = reverse('novelproject-list')
         self.detail_url = reverse('novelproject-detail', kwargs={'pk': self.project.pk})
         self.other_detail_url = reverse('novelproject-detail', kwargs={'pk': self.other_project.pk})
+        self.workbench_url = reverse('workbench-context', kwargs={'project_id': self.project.pk})
+        self.generation_context_url = reverse('generation-context', kwargs={'project_id': self.project.pk})
         self.authenticate(self.client, 'project-owner')
         self.authenticate(self.other_client, 'other-owner')
 
@@ -239,6 +250,209 @@ class NovelProjectAPITest(TestCase):
         response = self.client.get(self.other_detail_url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_workbench_context_returns_aggregated_payload(self):
+        """It returns a single payload for the workbench UI."""
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='worldview',
+            title='世界观',
+            content='云海城邦与地底遗迹并存。',
+            structured_data={'time_setting': '近未来'},
+            source='wizard',
+            order=0,
+        )
+        Storyline.objects.create(
+            project=self.project,
+            name='主线',
+            storyline_type='main',
+            status='active',
+            description='主角探索云海禁区的真相。',
+            priority=100,
+        )
+        chapter = Chapter.objects.create(
+            project=self.project,
+            chapter_number=1,
+            title='第一章',
+            raw_content='云海翻涌，主角踏入禁区。秘密仍未揭晓？',
+            final_content='云海翻涌，主角踏入禁区。秘密仍未揭晓？',
+            word_count=20,
+            status='draft',
+            summary='主角进入禁区并发现新的异常。',
+            open_threads=['禁区深处究竟藏着什么？'],
+        )
+        ChapterSummary.objects.create(
+            project=self.project,
+            chapter=chapter,
+            summary='主角进入禁区并发现新的异常。',
+            key_events=['进入禁区', '发现异常'],
+            open_threads=['禁区深处究竟藏着什么？'],
+        )
+        KnowledgeFact.objects.create(
+            project=self.project,
+            subject='云海城邦',
+            predicate='时代设定',
+            object='近未来',
+            source_excerpt='云海城邦与地底遗迹并存。',
+        )
+        ForeshadowItem.objects.create(
+            project=self.project,
+            title='禁区深处究竟藏着什么？',
+            description='开篇留下的核心悬念',
+        )
+        StyleProfile.objects.create(
+            project=self.project,
+            profile_type='project',
+            content='冷峻、快节奏、悬疑推进',
+            structured_data={'tone': '冷峻'},
+        )
+
+        response = self.client.get(self.workbench_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['project']['id'], self.project.id)
+        self.assertEqual(response.data['stats']['total_words'], 20)
+        self.assertEqual(len(response.data['chapters']), 1)
+        self.assertEqual(len(response.data['settings']), 1)
+        self.assertEqual(len(response.data['chapter_summaries']), 1)
+        self.assertEqual(len(response.data['storylines']), 1)
+        self.assertEqual(len(response.data['knowledge_facts']), 1)
+        self.assertEqual(len(response.data['foreshadow_items']), 1)
+        self.assertEqual(len(response.data['style_profiles']), 1)
+        self.assertIn('workbench_highlights', response.data)
+        self.assertIn('focus_card', response.data['workbench_highlights'])
+        self.assertIn('continuity_alerts', response.data['workbench_highlights'])
+        self.assertIn('knowledge_graph', response.data)
+
+    def test_workbench_context_rejects_other_users_project(self):
+        """It hides another user's workbench context."""
+        response = self.client.get(
+            reverse('workbench-context', kwargs={'project_id': self.other_project.pk})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_generation_context_returns_structured_payload(self):
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='storyline',
+            title='主线',
+            content='主角调查旧王朝的失落档案。',
+            structured_data={
+                'premise': '调查失落档案',
+                'central_conflict': '档案牵出更大的权力斗争',
+                'themes': ['真相', '牺牲'],
+                'stakes': '若失败则城市沦陷',
+            },
+            source='wizard',
+            order=3,
+        )
+        Storyline.objects.create(
+            project=self.project,
+            name='主线',
+            storyline_type='main',
+            status='active',
+            description='主角调查旧王朝的失落档案。',
+            priority=100,
+        )
+        PlotArcPoint.objects.create(
+            project=self.project,
+            chapter_number=3,
+            point_type='turning',
+            tension_level=80,
+            description='发现档案缺失的真相',
+        )
+        response = self.client.get(self.generation_context_url, {'chapter_number': 3})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['chapter_number'], 3)
+        self.assertIn('selected_settings', response.data)
+        self.assertIn('storylines', response.data)
+        self.assertIn('plot_points', response.data)
+        self.assertIn('chapter_goal', response.data)
+        self.assertIn('context_layers', response.data)
+        self.assertIn('focus_card', response.data)
+        self.assertIn('micro_beats', response.data)
+        self.assertIn('continuity_alerts', response.data)
+
+    def test_generation_context_prioritizes_relevant_assets(self):
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='storyline',
+            title='档案主线',
+            content='主角调查旧王朝档案失踪背后的真相。',
+            structured_data={'premise': '旧王朝档案失踪'},
+            source='wizard',
+            order=1,
+        )
+        NovelSetting.objects.create(
+            project=self.project,
+            setting_type='map',
+            title='海港地图',
+            content='港口集市商贩云集，与档案无关。',
+            structured_data={'regions': [{'name': '海港集市'}]},
+            source='wizard',
+            order=2,
+        )
+        Storyline.objects.create(
+            project=self.project,
+            name='档案主线',
+            storyline_type='main',
+            status='active',
+            description='围绕旧王朝档案缺失展开调查。',
+            priority=100,
+        )
+        Storyline.objects.create(
+            project=self.project,
+            name='海港支线',
+            storyline_type='subplot',
+            status='active',
+            description='描述港口商会竞争。',
+            priority=20,
+        )
+        PlotArcPoint.objects.create(
+            project=self.project,
+            chapter_number=6,
+            point_type='turning',
+            tension_level=90,
+            description='主角发现档案被人为删改的真相',
+        )
+        KnowledgeFact.objects.create(
+            project=self.project,
+            subject='旧王朝档案',
+            predicate='存放地点',
+            object='地下书库',
+            source_excerpt='档案被藏入地下书库深处。',
+        )
+        KnowledgeFact.objects.create(
+            project=self.project,
+            subject='海港商会',
+            predicate='主营',
+            object='香料贸易',
+            source_excerpt='海港商会近期扩大香料生意。',
+        )
+        ForeshadowItem.objects.create(
+            project=self.project,
+            title='档案缺页的真相',
+            description='缺失页面将揭开旧王朝覆灭内幕。',
+            expected_payoff_chapter=6,
+            status='open',
+        )
+        ForeshadowItem.objects.create(
+            project=self.project,
+            title='集市里的黑猫',
+            description='一只黑猫在海港集市穿行。',
+            expected_payoff_chapter=20,
+            status='open',
+        )
+
+        response = self.client.get(self.generation_context_url, {'chapter_number': 6})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['selected_settings'][0]['setting_type'], 'storyline')
+        self.assertEqual(response.data['storylines'][0]['name'], '档案主线')
+        self.assertEqual(response.data['knowledge_facts'][0]['subject'], '旧王朝档案')
+        self.assertEqual(response.data['foreshadow_items'][0]['title'], '档案缺页的真相')
 
     def test_create_project_rejects_invalid_chapter_counts(self):
         """It validates chapter-related numeric constraints."""

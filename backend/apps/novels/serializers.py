@@ -1,7 +1,17 @@
 from rest_framework import serializers
 
 from apps.inspirations.models import Inspiration
-from apps.novels.models import NovelProject, NovelSetting, NovelDraft, DraftSetting
+from apps.novels.models import (
+    DraftSetting,
+    ForeshadowItem,
+    KnowledgeFact,
+    NovelDraft,
+    NovelProject,
+    NovelSetting,
+    PlotArcPoint,
+    Storyline,
+    StyleProfile,
+)
 
 
 class NovelSettingSerializer(serializers.ModelSerializer):
@@ -16,6 +26,7 @@ class NovelSettingSerializer(serializers.ModelSerializer):
             'content',
             'structured_data',
             'ai_generated',
+            'source',
             'order',
             'created_at',
             'updated_at',
@@ -124,7 +135,7 @@ class NovelProjectSerializer(serializers.ModelSerializer):
 class DraftSettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = DraftSetting
-        fields = ['id', 'setting_type', 'title', 'content', 'structured_data', 'ai_generated', 'order', 'created_at', 'updated_at']
+        fields = ['id', 'setting_type', 'title', 'content', 'structured_data', 'ai_generated', 'source', 'order', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
@@ -135,3 +146,98 @@ class NovelDraftSerializer(serializers.ModelSerializer):
         model = NovelDraft
         fields = ['id', 'inspiration', 'title', 'genre', 'current_step', 'is_completed', 'converted_project', 'settings', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_completed', 'converted_project', 'created_at', 'updated_at']
+
+
+class StorylineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Storyline
+        fields = (
+            'id',
+            'name',
+            'storyline_type',
+            'status',
+            'description',
+            'estimated_chapter_start',
+            'estimated_chapter_end',
+            'priority',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+
+class PlotArcPointSerializer(serializers.ModelSerializer):
+    related_storyline_name = serializers.CharField(source='related_storyline.name', read_only=True)
+
+    class Meta:
+        model = PlotArcPoint
+        fields = (
+            'id',
+            'chapter_number',
+            'point_type',
+            'tension_level',
+            'description',
+            'related_storyline',
+            'related_storyline_name',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+
+class KnowledgeFactSerializer(serializers.ModelSerializer):
+    chapter_number = serializers.IntegerField(source='chapter.chapter_number', read_only=True)
+
+    class Meta:
+        model = KnowledgeFact
+        fields = (
+            'id',
+            'chapter',
+            'chapter_number',
+            'subject',
+            'predicate',
+            'object',
+            'source_excerpt',
+            'confidence',
+            'status',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+
+class ForeshadowItemSerializer(serializers.ModelSerializer):
+    introduced_in_chapter_number = serializers.IntegerField(
+        source='introduced_in_chapter.chapter_number',
+        read_only=True,
+    )
+
+    class Meta:
+        model = ForeshadowItem
+        fields = (
+            'id',
+            'title',
+            'description',
+            'introduced_in_chapter',
+            'introduced_in_chapter_number',
+            'expected_payoff_chapter',
+            'status',
+            'related_character',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+
+class StyleProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StyleProfile
+        fields = (
+            'id',
+            'profile_type',
+            'content',
+            'structured_data',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields

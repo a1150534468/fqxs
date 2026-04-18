@@ -22,6 +22,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/users/", include("apps.users.urls")),
     path("api/inspirations/", include("apps.inspirations.urls")),
+    path("api/workbench/", include("apps.novels.workbench_urls")),
     path("api/novels/", include("apps.novels.urls")),
     path("api/drafts/", include("apps.novels.draft_urls")),
     path("api/chapters/", include("apps.chapters.urls")),

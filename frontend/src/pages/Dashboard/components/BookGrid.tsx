@@ -1,4 +1,4 @@
-import { Button, Card, Col, Empty, Input, Row, Tag } from 'antd';
+import { Button, Card, Col, Empty, Input, Popconfirm, Row, Tag } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { statusColors } from '../constants';
 import type { Novel } from '../types';
@@ -77,16 +77,28 @@ const BookCard = ({ novel, onSelect, onDelete, statusLabel }: BookCardProps) => 
         <p className="text-xs text-gray-400 mt-1">{novel.genre || '未分类'}</p>
       </div>
       {onDelete && (
-        <Button
-          type="text"
-          size="small"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={(e) => {
-            e.stopPropagation();
+        <Popconfirm
+          title="删除书目"
+          description={`确定删除《${novel.title}》吗？`}
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={(e) => {
+            e?.stopPropagation();
             onDelete(novel.id);
           }}
-        />
+          onCancel={(e) => e?.stopPropagation()}
+        >
+          <Button
+            type="text"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          />
+        </Popconfirm>
       )}
     </div>
     <div className="mt-3 flex items-center justify-between">

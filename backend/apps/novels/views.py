@@ -9,13 +9,31 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 import httpx
 
-from apps.novels.models import NovelProject, NovelSetting, NovelDraft, DraftSetting
-from apps.novels.serializers import NovelProjectSerializer, NovelSettingSerializer, NovelDraftSerializer, DraftSettingSerializer
+from apps.novels.models import (
+    DraftSetting,
+    NovelDraft,
+    NovelProject,
+    NovelSetting,
+)
+from apps.novels.serializers import (
+    DraftSettingSerializer,
+    ForeshadowItemSerializer,
+    KnowledgeFactSerializer,
+    NovelDraftSerializer,
+    NovelProjectSerializer,
+    NovelSettingSerializer,
+    PlotArcPointSerializer,
+    StorylineSerializer,
+    StyleProfileSerializer,
+)
 from apps.novels.knowledge_graph import build_graph_from_settings
+from apps.novels.services.assets import build_generation_context, initialize_project_assets
+from apps.novels.services.workbench import build_workbench_context
 from apps.chapters.models import Chapter
 from celery_tasks.ai_tasks import generate_next_chapter_for_project
 
@@ -236,6 +254,7 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
                 'content': data.get('content', ''),
                 'structured_data': data.get('structured_data', {}),
                 'ai_generated': True,
+                'source': 'regenerated',
                 'order': idx,
             },
         )
@@ -269,6 +288,7 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
                 'title': title,
                 'content': content,
                 'structured_data': structured_data,
+                'source': 'wizard',
                 'order': idx,
             },
         )
@@ -311,6 +331,7 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
         project = self.get_object()
         project.wizard_completed = True
         project.save(update_fields=['wizard_completed', 'updated_at'])
+        initialize_project_assets(project)
         return Response(NovelProjectSerializer(project).data)
 
     @action(detail=True, methods=['post'], url_path='generate-next-chapter')
@@ -337,6 +358,75 @@ class NovelProjectViewSet(viewsets.ModelViewSet):
             'chapter_title': chapter_title,
             'task_id': result.id,
         }, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['get'], url_path='storylines')
+    def storylines(self, request, pk=None):
+        project = self.get_object()
+        return Response(StorylineSerializer(project.storylines.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='plot-arcs')
+    def plot_arcs(self, request, pk=None):
+        project = self.get_object()
+        return Response(PlotArcPointSerializer(project.plot_arc_points.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='knowledge-facts')
+    def knowledge_facts(self, request, pk=None):
+        project = self.get_object()
+        return Response(KnowledgeFactSerializer(project.knowledge_facts.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='foreshadow-items')
+    def foreshadow_items(self, request, pk=None):
+        project = self.get_object()
+        return Response(ForeshadowItemSerializer(project.foreshadow_items.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='style-profiles')
+    def style_profiles(self, request, pk=None):
+        project = self.get_object()
+        return Response(StyleProfileSerializer(project.style_profiles.all(), many=True).data)
+
+
+class WorkbenchContextView(APIView):
+    """Aggregate the workbench payload for a single project."""
+
+    authentication_classes = (JWTAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, project_id):
+        try:
+            project = NovelProject.objects.get(
+                id=project_id,
+                user=request.user,
+                is_deleted=False,
+            )
+        except NovelProject.DoesNotExist:
+            return Response({'error': 'Project not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(build_workbench_context(project))
+
+
+class GenerationContextView(APIView):
+    """Return a compact context package for chapter generation."""
+
+    authentication_classes = (JWTAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, project_id):
+        try:
+            project = NovelProject.objects.get(
+                id=project_id,
+                user=request.user,
+                is_deleted=False,
+            )
+        except NovelProject.DoesNotExist:
+            return Response({'error': 'Project not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        chapter_number = request.query_params.get('chapter_number')
+        try:
+            target_chapter_number = int(chapter_number) if chapter_number else project.current_chapter + 1
+        except (TypeError, ValueError):
+            return Response({'error': 'chapter_number must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(build_generation_context(project, target_chapter_number))
 
 
 class DraftViewSet(viewsets.ModelViewSet):
@@ -373,6 +463,7 @@ class DraftViewSet(viewsets.ModelViewSet):
                 'title': title,
                 'content': content,
                 'structured_data': structured_data,
+                'source': 'wizard',
                 'order': idx,
             },
         )
@@ -419,10 +510,13 @@ class DraftViewSet(viewsets.ModelViewSet):
                 content=ds.content,
                 structured_data=ds.structured_data,
                 ai_generated=ds.ai_generated,
+                source=ds.source,
                 order=ds.order,
             ))
         if novel_settings:
             NovelSetting.objects.bulk_create(novel_settings)
+
+        initialize_project_assets(project)
 
         # Mark draft completed
         draft.is_completed = True

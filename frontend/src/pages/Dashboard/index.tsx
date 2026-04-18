@@ -2,15 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Button, message } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
-import { getNovels, createDraft, getKnowledgeGraph, getNovelSettings } from '../../api/novels';
-import { getChapters } from '../../api/chapters';
+import { getNovels, createDraft, deleteNovel, getWorkbenchContext } from '../../api/novels';
 import { getStatsOverview } from '../../api/stats';
 import { HomePage } from './HomePage';
 import { WorkspacePage } from './WorkspacePage';
 import { NewBookWizard } from './NewBookWizard';
 import { LLMConfigModal } from './LLMConfigModal';
-import { useChapterStream } from '../../hooks/useChapterStream';
-import type { Chapter, KnowledgeGraphPayload, Novel, NovelSettingRecord } from './types';
+import { useActiveChapterStreams } from '../../hooks/useChapterStream';
+import type { Novel, WorkbenchContext } from './types';
 import type { StatsOverview } from '../../api/stats';
 
 const pickResults = (response: any) => {
@@ -23,7 +22,7 @@ const pickResults = (response: any) => {
 const Dashboard = () => {
   const navigate = useNavigate();
   const [novels, setNovels] = useState<Novel[]>([]);
-  const [chaptersByProject, setChaptersByProject] = useState<Record<number, Chapter[]>>({});
+  const [workbenchByProject, setWorkbenchByProject] = useState<Record<number, WorkbenchContext>>({});
   const [selectedNovelId, setSelectedNovelId] = useState<number | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<number | null>(null);
   const [chapterLoading, setChapterLoading] = useState(false);
@@ -33,8 +32,6 @@ const Dashboard = () => {
   const [wizardDraftId, setWizardDraftId] = useState<number | null>(null);
   const [llmModalOpen, setLlmModalOpen] = useState(false);
   const [statsOverview, setStatsOverview] = useState<StatsOverview | null>(null);
-  const [settingsByProject, setSettingsByProject] = useState<Record<number, NovelSettingRecord[]>>({});
-  const [knowledgeGraphByProject, setKnowledgeGraphByProject] = useState<Record<number, KnowledgeGraphPayload>>({});
 
   useEffect(() => {
     loadNovels();
@@ -45,24 +42,18 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (selectedNovelId == null) return;
-    if (!chaptersByProject[selectedNovelId]) {
-      fetchChaptersForProject(selectedNovelId);
+    if (!workbenchByProject[selectedNovelId]) {
+      fetchWorkbenchContextForProject(selectedNovelId);
     } else if (!selectedChapterId) {
-      const list = chaptersByProject[selectedNovelId];
+      const list = workbenchByProject[selectedNovelId]?.chapters ?? [];
       if (list.length) setSelectedChapterId(list[0].id);
     }
+  }, [selectedNovelId, workbenchByProject, selectedChapterId]);
 
-    if (!settingsByProject[selectedNovelId]) {
-      fetchSettingsForProject(selectedNovelId);
-    }
-    if (!knowledgeGraphByProject[selectedNovelId]) {
-      fetchKnowledgeGraphForProject(selectedNovelId);
-    }
-  }, [selectedNovelId, chaptersByProject, settingsByProject, knowledgeGraphByProject, selectedChapterId]);
-
-  const selectedNovel = novels.find((n) => n.id === selectedNovelId) ?? null;
-  const selectedChapters = selectedNovel ? chaptersByProject[selectedNovel.id] ?? [] : [];
-  const { state: activeStreamState } = useChapterStream(selectedNovelId);
+  const selectedWorkbench = selectedNovelId != null ? workbenchByProject[selectedNovelId] ?? null : null;
+  const selectedNovel = selectedWorkbench?.project ?? novels.find((n) => n.id === selectedNovelId) ?? null;
+  const selectedChapters = selectedWorkbench?.chapters ?? [];
+  const activeStreams = useActiveChapterStreams();
 
   const loadNovels = async () => {
     try {
@@ -71,50 +62,53 @@ const Dashboard = () => {
     } catch (error) { console.error('Failed to fetch novels', error); }
   };
 
-  const fetchChaptersForProject = async (projectId: number) => {
+  const fetchWorkbenchContextForProject = async (projectId: number) => {
     setChapterLoading(true);
     try {
-      const response = await getChapters(projectId, { ordering: 'chapter_number', page_size: 200 });
-      const list = pickResults(response);
-      setChaptersByProject((prev) => ({ ...prev, [projectId]: list }));
-      if (!selectedChapterId && projectId === selectedNovelId && list.length) setSelectedChapterId(list[0].id);
-    } catch (error) { console.error('Failed to fetch chapters', error); }
+      const response = await getWorkbenchContext(projectId);
+      setWorkbenchByProject((prev) => ({ ...prev, [projectId]: response }));
+      setNovels((prev) => prev.map((novel) => (
+        novel.id === projectId ? { ...novel, ...response.project } : novel
+      )));
+
+      if (projectId === selectedNovelId) {
+        const list = response.chapters ?? [];
+        if (!list.some((chapter: { id: number }) => chapter.id === selectedChapterId)) {
+          setSelectedChapterId(list[0]?.id ?? null);
+        }
+      }
+    } catch (error) { console.error('Failed to fetch workbench context', error); }
     finally { setChapterLoading(false); }
   };
 
-  const fetchSettingsForProject = async (projectId: number) => {
-    try {
-      const response = await getNovelSettings(projectId);
-      setSettingsByProject((prev) => ({ ...prev, [projectId]: pickResults(response) }));
-    } catch (error) {
-      console.error('Failed to fetch settings', error);
-    }
-  };
-
-  const fetchKnowledgeGraphForProject = async (projectId: number) => {
-    try {
-      const response = await getKnowledgeGraph(projectId);
-      setKnowledgeGraphByProject((prev) => ({ ...prev, [projectId]: response }));
-    } catch (error) {
-      console.error('Failed to fetch knowledge graph', error);
-    }
-  };
-
   const aggregatedStats = useMemo(() => {
-    if (!selectedNovel) return { totalWords: 0, finishedChapters: 0, completionRate: 0, averageWords: 0, lastUpdate: '--' };
-    const totalWords = selectedChapters.reduce((sum, c) => sum + (c.word_count || 0), 0);
-    const finishedChapters = selectedChapters.filter((c) => ['draft', 'published'].includes(c.status || '')).length;
-    const completionRate = selectedNovel.target_chapters ? Math.min(100, Math.round(((selectedNovel.current_chapter || finishedChapters) / selectedNovel.target_chapters) * 100)) : 0;
-    const averageWords = selectedChapters.length > 0 ? Math.round(totalWords / selectedChapters.length) : 0;
-    const lastUpdate = selectedNovel.last_update_at || selectedChapters[selectedChapters.length - 1]?.updated_at || selectedChapters[selectedChapters.length - 1]?.created_at || '--';
-    return { totalWords, finishedChapters, completionRate, averageWords, lastUpdate };
-  }, [selectedNovel, selectedChapters]);
+    if (!selectedWorkbench) {
+      return {
+        totalWords: 0,
+        finishedChapters: 0,
+        completionRate: 0,
+        averageWords: 0,
+        lastUpdate: '--',
+      };
+    }
+
+    return {
+      totalWords: selectedWorkbench.stats.total_words,
+      finishedChapters: selectedWorkbench.stats.finished_chapters,
+      completionRate: selectedWorkbench.stats.completion_rate,
+      averageWords: selectedWorkbench.stats.average_words,
+      lastUpdate: selectedWorkbench.stats.last_update || '--',
+    };
+  }, [selectedWorkbench]);
 
   const totalStats = useMemo(() => {
     const chapterTotal = novels.reduce((sum, n) => sum + (n.current_chapter || 0), 0);
-    const wordTotal = Object.values(chaptersByProject).flat().reduce((sum, c) => sum + (c.word_count || 0), 0);
+    const wordTotal = Object.values(workbenchByProject).reduce(
+      (sum, context) => sum + (context.stats.total_words || 0),
+      0,
+    );
     return { bookCount: novels.length, chapterCount: chapterTotal, wordCount: wordTotal };
-  }, [novels, chaptersByProject]);
+  }, [novels, workbenchByProject]);
 
   const handleCreateProject = async () => {
     const inspiration = pendingTitle || chatInput.trim();
@@ -143,20 +137,67 @@ const Dashboard = () => {
   };
 
   const handleSelectNovel = (novelId: number) => {
-    setSelectedNovelId(novelId); setSelectedChapterId(null); navigate('/workspace');
+    setSelectedNovelId(novelId);
+    setSelectedChapterId(null);
+    fetchWorkbenchContextForProject(novelId);
+    navigate('/workspace');
+  };
+
+  const handleDeleteNovel = async (novelId: number) => {
+    try {
+      await deleteNovel(novelId);
+      setNovels((prev) => prev.filter((novel) => novel.id !== novelId));
+      setWorkbenchByProject((prev) => {
+        const next = { ...prev };
+        delete next[novelId];
+        return next;
+      });
+
+      if (selectedNovelId === novelId) {
+        setSelectedNovelId(null);
+        setSelectedChapterId(null);
+      }
+
+      message.success('书目已删除');
+    } catch (error) {
+      console.error('Failed to delete novel', error);
+      message.error('删除书目失败');
+    }
   };
 
   return (
     <>
-      {activeStreamState.isRunning && selectedNovel && (
-        <div
-          style={{ position: 'fixed', top: 16, right: 64, zIndex: 50 }}
-          className="flex items-center gap-1 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full shadow animate-pulse cursor-pointer"
-          onClick={() => navigate('/workspace')}
-          title={`${selectedNovel.title} 写作中`}
-        >
-          <span>{selectedNovel.title.slice(0, 6)}</span>
-          <span>写作中...</span>
+      {activeStreams.length > 0 && (
+        <div style={{ position: 'fixed', top: 16, right: 64, zIndex: 50 }} className="flex flex-col gap-2">
+          {activeStreams.map(({ projectId, state }) => {
+            const novel = workbenchByProject[projectId]?.project
+              || novels.find((item) => item.id === projectId);
+            const title = novel?.title || `项目 ${projectId}`;
+            return (
+              <div
+                key={projectId}
+                className="flex items-center gap-1 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full shadow animate-pulse cursor-pointer"
+                onClick={() => {
+                  setSelectedNovelId(projectId);
+                  setSelectedChapterId(null);
+                  fetchWorkbenchContextForProject(projectId);
+                  navigate('/workspace');
+                }}
+                title={`${title} ${state.runMode === 'continuous' ? 'continuous' : state.mode || 'generate'} 中`}
+              >
+                <span>{title.slice(0, 6)}</span>
+                <span>
+                  {state.runMode === 'continuous'
+                    ? `迭代 ${state.currentChapter ?? '?'} / ${state.targetChapter ?? '?'}`
+                    : state.mode === 'continue'
+                      ? '续写中'
+                      : state.mode === 'regenerate'
+                        ? '重写中'
+                        : '写作中'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
       <Button
@@ -180,6 +221,7 @@ const Dashboard = () => {
               setChatInput={setChatInput}
               onCreateProject={handleCreateProject}
               onSelectNovel={handleSelectNovel}
+              onDeleteNovel={handleDeleteNovel}
             />
           }
         />
@@ -193,9 +235,21 @@ const Dashboard = () => {
               onSelectChapter={(id) => setSelectedChapterId(id)}
               chapterLoading={chapterLoading}
               aggregatedStats={aggregatedStats}
-              settings={selectedNovelId ? settingsByProject[selectedNovelId] || [] : []}
-              knowledgeGraph={selectedNovelId ? knowledgeGraphByProject[selectedNovelId] : undefined}
-              onChapterSaved={() => { if (selectedNovelId) fetchChaptersForProject(selectedNovelId); }}
+              settings={selectedWorkbench?.settings || []}
+              chapterSummaries={selectedWorkbench?.chapter_summaries || []}
+              storylines={selectedWorkbench?.storylines || []}
+              plotArcPoints={selectedWorkbench?.plot_arc_points || []}
+              knowledgeFacts={selectedWorkbench?.knowledge_facts || []}
+              foreshadowItems={selectedWorkbench?.foreshadow_items || []}
+              styleProfiles={selectedWorkbench?.style_profiles || []}
+              workbenchHighlights={selectedWorkbench?.workbench_highlights}
+              knowledgeGraph={selectedWorkbench?.knowledge_graph}
+              onChapterSaved={() => {
+                if (selectedNovelId) {
+                  fetchWorkbenchContextForProject(selectedNovelId);
+                  loadNovels();
+                }
+              }}
             />
           }
         />

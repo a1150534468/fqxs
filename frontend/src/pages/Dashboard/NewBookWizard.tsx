@@ -304,6 +304,14 @@ export const NewBookWizard = ({
     if (WIZARD_STEP_TYPES.length === 0) return 0;
     return Math.round((savedKeys.size / WIZARD_STEP_TYPES.length) * 100);
   }, [savedKeys]);
+  const maxUnlockedStep = useMemo(() => {
+    for (let index = 0; index < WIZARD_STEP_TYPES.length; index += 1) {
+      if (!savedKeys.has(WIZARD_STEP_TYPES[index])) {
+        return index;
+      }
+    }
+    return FINAL_STEP_INDEX;
+  }, [savedKeys]);
 
   const previewMarkdown = isStreaming ? streamingText : currentContent;
   const canProceed = !isStreaming && (!!currentContent || isFinalStep);
@@ -658,15 +666,21 @@ export const NewBookWizard = ({
                   const saved = savedKeys.has(type);
                   const active = idx === step;
                   const done = idx < step || saved;
+                  const locked = idx > maxUnlockedStep;
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => setStep(idx)}
+                      onClick={() => {
+                        if (!locked) setStep(idx);
+                      }}
+                      disabled={locked}
                       className={`w-full text-left rounded-xl px-3 py-2 transition-colors ${
                         active
                           ? 'bg-indigo-50 border border-indigo-200'
-                          : 'hover:bg-slate-50 border border-transparent'
+                          : locked
+                            ? 'bg-slate-50/70 border border-transparent cursor-not-allowed opacity-55'
+                            : 'hover:bg-slate-50 border border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -688,6 +702,9 @@ export const NewBookWizard = ({
                         >
                           {title}
                         </span>
+                        {locked && (
+                          <span className="text-[10px] text-gray-400 ml-auto">待解锁</span>
+                        )}
                         {saved && !active && (
                           <span className="text-[10px] text-emerald-500 ml-auto">已保存</span>
                         )}
@@ -756,8 +773,8 @@ export const NewBookWizard = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden min-h-0">
+                  <div className="flex-1 basis-0 flex flex-col min-w-0 min-h-0 overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-gray-700">AI 实时输出</p>
@@ -793,7 +810,7 @@ export const NewBookWizard = ({
                         </Button>
                       </div>
                     </div>
-                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 overflow-auto w-0 min-w-full" data-color-mode="light">
+                    <div className="bg-white border border-slate-200 text-slate-800 text-sm rounded-2xl p-4 flex-1 min-h-0 min-w-0 w-full overflow-auto" data-color-mode="light">
                       {streamError && !isStreaming ? (
                         <div className="flex flex-col items-center justify-center h-full gap-2">
                           <p className="text-red-500 text-sm">{streamError}</p>
@@ -823,7 +840,7 @@ export const NewBookWizard = ({
                       )}
                     </div>
                   </div>
-                  <div className="flex-1 flex flex-col overflow-hidden min-w-0 max-w-full">
+                  <div className="flex-1 basis-0 flex flex-col overflow-hidden min-w-0 min-h-0 max-w-full">
                     <span className="text-sm font-medium text-gray-700 mb-2">结构化编辑</span>
                     <Input
                       placeholder={`${currentLabel}标题`}

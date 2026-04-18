@@ -19,6 +19,7 @@ interface HomePageProps {
   setChatInput: (value: string) => void;
   onCreateProject: () => void;
   onSelectNovel: (novelId: number) => void;
+  onDeleteNovel: (novelId: number) => void;
 }
 
 export const HomePage = ({
@@ -29,6 +30,7 @@ export const HomePage = ({
   setChatInput,
   onCreateProject,
   onSelectNovel,
+  onDeleteNovel,
 }: HomePageProps) => {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
     {
@@ -109,7 +111,11 @@ export const HomePage = ({
           />
 
           <div className="space-y-5">
-            <BookGrid novels={novels} onSelectNovel={onSelectNovel} />
+            <BookGrid
+              novels={novels}
+              onSelectNovel={onSelectNovel}
+              onDeleteNovel={onDeleteNovel}
+            />
             
           </div>
         </div>
