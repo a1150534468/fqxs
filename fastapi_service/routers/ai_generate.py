@@ -15,6 +15,8 @@ from models.schemas import (
     ContinueRequest,
     ContinueResponse,
     ConsistencyAnalysisResponse,
+    GenerateTitlesRequest,
+    GenerateTitlesResponse,
     KnowledgeFactAnalysisResponse,
     OutlineRequest,
     OutlineResponse,
@@ -124,6 +126,22 @@ async def generate_setting(
         user_token=token,
     )
     return SettingGenerateResponse(**result)
+
+
+@router.post("/generate/titles", response_model=GenerateTitlesResponse)
+async def generate_titles(
+    payload: GenerateTitlesRequest,
+    authorization: Optional[str] = Header(None),
+) -> GenerateTitlesResponse:
+    token = _extract_token(authorization)
+    titles = await llm_client.generate_titles(
+        inspiration=payload.inspiration,
+        genre=payload.genre,
+        style_preference=payload.style_preference,
+        count=payload.count,
+        user_token=token,
+    )
+    return GenerateTitlesResponse(titles=titles)
 
 
 @router.post("/analyze/chapter-summary", response_model=ChapterSummaryAnalysisResponse)

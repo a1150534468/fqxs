@@ -104,3 +104,14 @@ class SettingGenerateResponse(APIBaseModel):
     structured_data: dict = {}
     validation_ok: bool = True
     retries: int = 0
+
+
+class GenerateTitlesRequest(APIBaseModel):
+    inspiration: str = Field(..., min_length=1)
+    genre: str = Field(default="", max_length=50)
+    style_preference: str = Field(default="", max_length=100)
+    count: int = Field(default=3, ge=3, le=5)
+
+
+class GenerateTitlesResponse(APIBaseModel):
+    titles: list[str]
