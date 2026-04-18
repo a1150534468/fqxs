@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -92,6 +93,81 @@ class DraftAPITest(TestCase):
         self.assertEqual(response.data['style_preference'], '热血升级流')
         draft = NovelDraft.objects.get(pk=response.data['id'])
         self.assertEqual(draft.style_preference, '热血升级流')
+
+    @patch('apps.novels.views.httpx.post')
+    def test_generate_titles_returns_cleaned_unique_candidates(self, mock_post):
+        draft = NovelDraft.objects.create(
+            user=self.user,
+            inspiration='末世废土中觉醒时间回溯异能的快递员',
+            genre='科幻',
+            style_preference='强悬念',
+        )
+        mock_post.return_value.status_code = status.HTTP_200_OK
+        mock_post.return_value.json.return_value = {
+            'titles': ['  时间回档快递员  ', '', '时间回档快递员', '废土逆流者', '   ', '废土逆流者']
+        }
+
+        response = self.client.post(
+            reverse('draft-generate-titles', kwargs={'pk': draft.pk}),
+            {'count': 5},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['titles'], ['时间回档快递员', '废土逆流者'])
+        self.assertEqual(response.data['style_preference'], '强悬念')
+
+    @patch('apps.novels.views.httpx.post')
+    def test_generate_titles_rejects_completed_draft(self, mock_post):
+        draft = NovelDraft.objects.create(
+            user=self.user,
+            inspiration='仙门掌门重生回入门第一天',
+            genre='玄幻',
+            style_preference='轻松反套路',
+            is_completed=True,
+        )
+
+        response = self.client.post(
+            reverse('draft-generate-titles', kwargs={'pk': draft.pk}),
+            {'count': 4},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['error'], 'Draft already completed.')
+        mock_post.assert_not_called()
+
+    @patch('apps.novels.views.httpx.post')
+    def test_generate_titles_uses_draft_payload_and_clamped_count(self, mock_post):
+        draft = NovelDraft.objects.create(
+            user=self.user,
+            inspiration='落魄县令靠断案直播洗白翻红',
+            genre='历史',
+            style_preference='冷幽默',
+        )
+        mock_post.return_value.status_code = status.HTTP_200_OK
+        mock_post.return_value.json.return_value = {'titles': ['县令翻红记']}
+
+        response = self.client.post(
+            reverse('draft-generate-titles', kwargs={'pk': draft.pk}),
+            {'count': 99},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['titles'], ['县令翻红记'])
+        self.assertEqual(response.data['style_preference'], '冷幽默')
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(
+            kwargs['json'],
+            {
+                'inspiration': '落魄县令靠断案直播洗白翻红',
+                'genre': '历史',
+                'style_preference': '冷幽默',
+                'count': 5,
+            },
+        )
 
 
 class NovelProjectAPITest(TestCase):

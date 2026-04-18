@@ -43,6 +43,22 @@ WIZARD_ORDER = [
 ]
 
 
+def _clean_title_candidates(candidates):
+    cleaned_titles = []
+    seen_titles = set()
+
+    for candidate in candidates or []:
+        if candidate is None:
+            continue
+        title = str(candidate).strip()
+        if not title or title in seen_titles:
+            continue
+        seen_titles.add(title)
+        cleaned_titles.append(title)
+
+    return cleaned_titles
+
+
 class NovelProjectViewSet(viewsets.ModelViewSet):
     """CRUD API for novel projects scoped to the authenticated user."""
 
@@ -481,6 +497,53 @@ class DraftViewSet(viewsets.ModelViewSet):
         draft = self.get_object()
         settings_qs = DraftSetting.objects.filter(draft=draft)
         return Response(DraftSettingSerializer(settings_qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='generate-titles')
+    def generate_titles(self, request, pk=None):
+        """Generate draft title candidates via the FastAPI AI service."""
+        draft = self.get_object()
+        if draft.is_completed:
+            return Response({'error': 'Draft already completed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            count = int(request.data.get('count', 3))
+        except (TypeError, ValueError):
+            count = 3
+        count = max(3, min(count, 5))
+
+        payload = {
+            'inspiration': draft.inspiration,
+            'genre': draft.genre,
+            'style_preference': draft.style_preference,
+            'count': count,
+        }
+        headers = {'Authorization': request.headers.get('Authorization', '')}
+
+        try:
+            resp = httpx.post(
+                f"{django_settings.FASTAPI_URL.rstrip('/')}/api/ai/generate/titles",
+                json=payload,
+                headers=headers,
+                timeout=90.0,
+            )
+        except httpx.HTTPError as e:
+            return Response(
+                {'error': f'AI service error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        if resp.status_code != 200:
+            return Response(
+                {'error': f'AI service returned {resp.status_code}: {resp.text}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        data = resp.json()
+        titles = _clean_title_candidates(data.get('titles', []))
+        return Response({
+            'titles': titles,
+            'style_preference': draft.style_preference,
+        })
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete(self, request, pk=None):
