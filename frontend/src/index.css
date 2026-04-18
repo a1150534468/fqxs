@@ -1,3 +1,32 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Writing hints accordion — strip default Ant borders, give a clean card look */
+.writing-hints-collapse.ant-collapse {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.writing-hints-collapse.ant-collapse > .ant-collapse-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 1.5rem !important;
+  margin-bottom: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  overflow: hidden;
+}
+
+.writing-hints-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-header {
+  padding: 0.875rem 1rem;
+  align-items: center;
+}
+
+.writing-hints-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box {
+  padding: 0 1rem 1rem;
+}
+
+.writing-hints-collapse.ant-collapse > .ant-collapse-item:last-child {
+  margin-bottom: 0;
+}
