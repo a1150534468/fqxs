@@ -483,6 +483,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               label: '质检',
               children: (
                 <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="连续性警报">
                     {workbenchHighlights?.continuity_alerts?.length ? (
                       <div className="space-y-3">
                         {workbenchHighlights.continuity_alerts.map((item) => (
