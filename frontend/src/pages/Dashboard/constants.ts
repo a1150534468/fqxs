@@ -1,10 +1,15 @@
-export const wizardSteps = [
+export const wizardSettingSteps = [
   '世界观',
   '人物',
   '地图',
   '故事线',
   '情节弧',
   '开始',
+];
+
+export const wizardSteps = [
+  '书名',
+  ...wizardSettingSteps,
   '进入工作台',
 ];
 

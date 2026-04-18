@@ -1,18 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Input, Modal, Spin, Steps, Tag, Tooltip, Progress, message } from 'antd';
+import { Button, Empty, Input, Modal, Spin, Steps, Tag, Tooltip, Progress, Alert, message } from 'antd';
 import { ThunderboltOutlined, PauseOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import MDEditor from '@uiw/react-md-editor';
 import ReactECharts from 'echarts-for-react';
-import { wizardSteps, WIZARD_STEP_TYPES } from './constants';
+import { wizardSteps, wizardSettingSteps, WIZARD_STEP_TYPES } from './constants';
 import {
+  getDraft,
   getDraftSettings,
   saveDraftStep,
   completeDraft,
+  generateDraftTitles,
+  updateDraft,
 } from '../../api/novels';
 import { useSettingStream } from '../../hooks/useSettingStream';
 import type { NovelSettingRecord } from './types';
 
 const { TextArea } = Input;
+
+interface DraftRecord {
+  id: number;
+  title?: string;
+  inspiration?: string;
+  genre?: string;
+  style_preference?: string;
+  current_step?: number;
+  is_completed?: boolean;
+}
 
 interface NewBookWizardProps {
   open: boolean;
@@ -29,9 +42,12 @@ const pickArray = (response: any): any[] => {
   return [];
 };
 
-const FINAL_STEP_INDEX = wizardSteps.length - 1; // 6 (进入工作台)
+const FINAL_STEP_INDEX = wizardSteps.length - 1; // 7 (进入工作台)
+const TITLE_STEP_INDEX = 0;
+const FIRST_SETTING_STEP_INDEX = 1;
 
 const stepDescriptions = [
+  '先生成 3-5 个书名候选，选中后作为草稿正式书名。',
   '搭建故事世界的 8 维度：时间、地点、社会、文化、科技、力量、历史、自然法则。',
   '定义主要角色、性格、动机与关系网络。',
   '规划关键地点、区域连接与空间布局。',
@@ -49,10 +65,15 @@ export const NewBookWizard = ({
   onFinished,
 }: NewBookWizardProps) => {
   const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState<DraftRecord | null>(null);
   const [settings, setSettings] = useState<Record<string, NovelSettingRecord>>({});
   const [stepContent, setStepContent] = useState<Record<string, string>>({});
   const [stepTitles, setStepTitles] = useState<Record<string, string>>({});
   const [stepStructured, setStepStructured] = useState<Record<string, any>>({});
+  const [selectedTitle, setSelectedTitle] = useState('');
+  const [titleCandidates, setTitleCandidates] = useState<string[]>([]);
+  const [titleLoading, setTitleLoading] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -68,11 +89,14 @@ export const NewBookWizard = ({
   } = useSettingStream();
 
   const isFinalStep = step === FINAL_STEP_INDEX;
-  const currentType = !isFinalStep ? WIZARD_STEP_TYPES[step] : '';
+  const isTitleStep = step === TITLE_STEP_INDEX;
+  const currentSettingIndex = step - FIRST_SETTING_STEP_INDEX;
+  const currentType = !isFinalStep && !isTitleStep ? WIZARD_STEP_TYPES[currentSettingIndex] : '';
   const currentLabel = wizardSteps[step];
   const currentContent = currentType ? stepContent[currentType] ?? '' : '';
   const currentTitle = currentType ? stepTitles[currentType] ?? '' : '';
   const currentStructured = currentType ? stepStructured[currentType] ?? {} : {};
+  const resolvedBookTitle = selectedTitle || draft?.title || pendingTitle || '新书';
 
   const updateCurrentContent = (value: string) => {
     if (!currentType) return;
@@ -97,10 +121,11 @@ export const NewBookWizard = ({
     if (!open || !draftId) return;
     let cancelled = false;
     setLoadingExisting(true);
-    getDraftSettings(draftId)
-      .then((res) => {
+    Promise.all([getDraft(draftId), getDraftSettings(draftId)])
+      .then(([draftRes, settingsRes]) => {
         if (cancelled) return;
-        const list = pickArray(res);
+        const draftData = draftRes as DraftRecord;
+        const list = pickArray(settingsRes);
         const map: Record<string, NovelSettingRecord> = {};
         const contentMap: Record<string, string> = {};
         const titleMap: Record<string, string> = {};
@@ -112,17 +137,29 @@ export const NewBookWizard = ({
           structMap[item.setting_type] = item.structured_data || {};
           autoGenTriggered.current[item.setting_type] = true;
         });
+        setDraft(draftData);
+        setSelectedTitle(draftData?.title || '');
+        setTitleCandidates(draftData?.title ? [draftData.title] : []);
         setSettings(map);
         setStepContent(contentMap);
         setStepTitles(titleMap);
         setStepStructured(structMap);
+        const hasSavedSettings = list.length > 0;
+        const initialStep = hasSavedSettings
+          ? Math.min((draftData?.current_step ?? 1) + FIRST_SETTING_STEP_INDEX, FINAL_STEP_INDEX)
+          : TITLE_STEP_INDEX;
+        setStep(initialStep);
       })
       .catch(() => {
         if (!cancelled) {
+          setDraft(null);
+          setSelectedTitle('');
+          setTitleCandidates([]);
           setSettings({});
           setStepContent({});
           setStepTitles({});
           setStepStructured({});
+          setStep(TITLE_STEP_INDEX);
         }
       })
       .finally(() => {
@@ -137,6 +174,9 @@ export const NewBookWizard = ({
   useEffect(() => {
     if (!open) {
       setStep(0);
+      setDraft(null);
+      setSelectedTitle('');
+      setTitleCandidates([]);
       setSettings({});
       setStepContent({});
       setStepTitles({});
@@ -156,7 +196,7 @@ export const NewBookWizard = ({
         if (content || structured) {
           prior.push({
             setting_type: type,
-            title: stepTitles[type] || wizardSteps[i],
+            title: stepTitles[type] || wizardSettingSteps[i],
             content: content || '',
             structured_data: structured || {},
           });
@@ -170,31 +210,79 @@ export const NewBookWizard = ({
   const buildContextString = useCallback(
     (forStep: number) => {
       const prior: string[] = [];
-      if (pendingTitle) prior.push(`书名灵感:${pendingTitle}`);
+      if (resolvedBookTitle) prior.push(`书名:${resolvedBookTitle}`);
+      if (draft?.inspiration) prior.push(`灵感:${draft.inspiration}`);
       for (let i = 0; i < forStep; i++) {
         const type = WIZARD_STEP_TYPES[i];
         const content = stepContent[type];
         if (content) {
-          prior.push(`【${wizardSteps[i]}】\n${content}`);
+          prior.push(`【${wizardSettingSteps[i]}】\n${content}`);
         }
       }
       return prior.join('\n\n');
     },
-    [pendingTitle, stepContent],
+    [resolvedBookTitle, draft?.inspiration, stepContent],
   );
+
+  const refreshTitleCandidates = useCallback(
+    async (count = 3) => {
+      if (!draftId) return;
+      setTitleLoading(true);
+      try {
+        const res = await generateDraftTitles(draftId, { count });
+        const titles = Array.isArray(res?.titles) ? res.titles.filter(Boolean) : [];
+        setTitleCandidates(titles);
+        if (!selectedTitle && titles.length > 0) {
+          setSelectedTitle(titles[0]);
+        }
+      } catch (err: any) {
+        console.error(err);
+        message.error(err?.response?.data?.detail || '生成书名失败');
+      } finally {
+        setTitleLoading(false);
+      }
+    },
+    [draftId, selectedTitle],
+  );
+
+  const persistTitle = useCallback(async (): Promise<boolean> => {
+    if (!draftId) return false;
+    const title = selectedTitle.trim();
+    if (!title) {
+      message.warning('请先选择或填写书名');
+      return false;
+    }
+    setSavingTitle(true);
+    try {
+      const updated = await updateDraft(draftId, { title });
+      setDraft((prev) => ({ ...(prev || {}), ...(updated || {}), title }));
+      setSelectedTitle(title);
+      if (!titleCandidates.includes(title)) {
+        setTitleCandidates((prev) => [title, ...prev].slice(0, 5));
+      }
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data?.detail || '保存书名失败');
+      return false;
+    } finally {
+      setSavingTitle(false);
+    }
+  }, [draftId, selectedTitle, titleCandidates]);
 
   const runGenerate = useCallback(
     async (targetStep: number) => {
-      const type = WIZARD_STEP_TYPES[targetStep];
-      const label = wizardSteps[targetStep];
+      const settingIndex = targetStep - FIRST_SETTING_STEP_INDEX;
+      const type = WIZARD_STEP_TYPES[settingIndex];
+      const label = wizardSettingSteps[settingIndex];
       if (!type) return;
       try {
         const res = await generate({
           setting_type: type,
-          book_title: pendingTitle || '新书',
-          genre: '',
-          context: buildContextString(targetStep) || pendingTitle || label,
-          prior_settings: buildPriorSettings(targetStep),
+          book_title: resolvedBookTitle,
+          genre: draft?.genre || '',
+          context: buildContextString(settingIndex) || draft?.inspiration || label,
+          prior_settings: buildPriorSettings(settingIndex),
         });
         if (!res) {
           message.warning('AI 未返回内容,请重试或手动填写');
@@ -213,7 +301,7 @@ export const NewBookWizard = ({
         message.error(err?.message || `${label}生成失败`);
       }
     },
-    [generate, pendingTitle, buildContextString, buildPriorSettings],
+    [generate, resolvedBookTitle, draft?.genre, draft?.inspiration, buildContextString, buildPriorSettings],
   );
 
   // Keep a stable ref to runGenerate so the auto-generate effect
@@ -224,24 +312,38 @@ export const NewBookWizard = ({
   // Auto-generate on entering a non-final step that has no content yet
   useEffect(() => {
     if (!open || loadingExisting) return;
-    if (isFinalStep) return;
+    if (isFinalStep || isTitleStep) return;
     if (!draftId) return;
     if (isStreaming) return;
-    const type = WIZARD_STEP_TYPES[step];
+    const type = currentType;
     if (!type) return;
     if (stepContent[type]) return;
     if (autoGenTriggered.current[type]) return;
     autoGenTriggered.current[type] = true;
     void runGenerateRef.current(step);
-  }, [open, loadingExisting, isFinalStep, draftId, step, stepContent, isStreaming]);
+  }, [open, loadingExisting, isFinalStep, isTitleStep, draftId, isStreaming, currentType, step, stepContent]);
+
+  useEffect(() => {
+    if (!open || loadingExisting) return;
+    if (!draftId || !isTitleStep) return;
+    if (selectedTitle || titleCandidates.length > 0 || titleLoading) return;
+    void refreshTitleCandidates();
+  }, [open, loadingExisting, draftId, isTitleStep, selectedTitle, titleCandidates.length, titleLoading, refreshTitleCandidates]);
 
   const handleManualGenerate = async () => {
+    if (isTitleStep) {
+      await refreshTitleCandidates();
+      return;
+    }
     if (!currentType) return;
     autoGenTriggered.current[currentType] = true;
     await runGenerate(step);
   };
 
   const persistCurrent = async (): Promise<boolean> => {
+    if (isTitleStep) {
+      return persistTitle();
+    }
     if (!draftId || !currentType) return true;
     const contentValue = (stepContent[currentType] ?? '').trim();
     if (!contentValue) {
@@ -301,27 +403,31 @@ export const NewBookWizard = ({
 
   const savedKeys = useMemo(() => new Set(Object.keys(settings)), [settings]);
   const completionRate = useMemo(() => {
-    if (WIZARD_STEP_TYPES.length === 0) return 0;
-    return Math.round((savedKeys.size / WIZARD_STEP_TYPES.length) * 100);
-  }, [savedKeys]);
+    const completedCount = savedKeys.size + (selectedTitle ? 1 : 0);
+    const totalStepCount = WIZARD_STEP_TYPES.length + 1;
+    return Math.round((completedCount / totalStepCount) * 100);
+  }, [savedKeys, selectedTitle]);
   const maxUnlockedStep = useMemo(() => {
+    if (!selectedTitle) return TITLE_STEP_INDEX;
     for (let index = 0; index < WIZARD_STEP_TYPES.length; index += 1) {
       if (!savedKeys.has(WIZARD_STEP_TYPES[index])) {
-        return index;
+        return index + FIRST_SETTING_STEP_INDEX;
       }
     }
     return FINAL_STEP_INDEX;
-  }, [savedKeys]);
+  }, [savedKeys, selectedTitle]);
 
   const previewMarkdown = isStreaming ? streamingText : currentContent;
-  const canProceed = !isStreaming && (!!currentContent || isFinalStep);
+  const canProceed = isTitleStep
+    ? !titleLoading && !!selectedTitle.trim()
+    : !isStreaming && (!!currentContent || isFinalStep);
 
   const handleExportWizard = async () => {
     const text = WIZARD_STEP_TYPES.map((type, idx) => {
       const rec = settings[type];
       const fallback = stepContent[type] || '';
-      const title = rec?.title || stepTitles[type] || wizardSteps[idx];
-      return `${idx + 1}. ${wizardSteps[idx]} · ${title}\n${rec?.content || fallback}`;
+      const title = rec?.title || stepTitles[type] || wizardSettingSteps[idx];
+      return `${idx + 1}. ${wizardSettingSteps[idx]} · ${title}\n${rec?.content || fallback}`;
     }).join('\n\n');
     if (!text.trim()) {
       message.warning('暂无可导出的内容');
@@ -645,7 +751,7 @@ export const NewBookWizard = ({
       <div className="p-4 lg:p-6 space-y-4 bg-slate-50">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold text-slate-800">新书设置向导</h2>
-          {pendingTitle && <Tag color="purple">{pendingTitle}</Tag>}
+          {resolvedBookTitle && <Tag color="purple">{resolvedBookTitle}</Tag>}
           <Tag color="blue">
             第 {step + 1} / {wizardSteps.length} 步 · {currentLabel}
           </Tag>
@@ -662,8 +768,10 @@ export const NewBookWizard = ({
               </div>
               <div className="flex-1 overflow-y-auto pr-1 space-y-1">
                 {wizardSteps.map((title, idx) => {
-                  const type = WIZARD_STEP_TYPES[idx];
-                  const saved = savedKeys.has(type);
+                  const type = idx >= FIRST_SETTING_STEP_INDEX && idx < FINAL_STEP_INDEX
+                    ? WIZARD_STEP_TYPES[idx - FIRST_SETTING_STEP_INDEX]
+                    : '';
+                  const saved = idx === TITLE_STEP_INDEX ? !!selectedTitle : !!type && savedKeys.has(type);
                   const active = idx === step;
                   const done = idx < step || saved;
                   const locked = idx > maxUnlockedStep;
@@ -717,15 +825,15 @@ export const NewBookWizard = ({
                 })}
               </div>
               <div className="pt-4 space-y-2 text-xs text-gray-500">
-                <p>每步自动 AI 生成；可随时重新生成。</p>
+                <p>{isTitleStep ? '先确定书名，再继续生成后续设定。' : '每步自动 AI 生成；可随时重新生成。'}</p>
                 <Button
                   block
                   size="small"
                   icon={<ThunderboltOutlined />}
                   onClick={handleManualGenerate}
-                  disabled={isStreaming || isFinalStep}
+                  disabled={isStreaming || isFinalStep || titleLoading || savingTitle}
                 >
-                  重新生成当前步
+                  {isTitleStep ? '换一批书名' : '重新生成当前步'}
                 </Button>
               </div>
             </div>
@@ -740,7 +848,7 @@ export const NewBookWizard = ({
                 <div className="flex flex-col h-full">
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-sm text-gray-600">
-                      以下为《{pendingTitle || '新书'}》的完整设定，请确认后点击"完成并进入工作台"。
+                      以下为《{resolvedBookTitle}》的完整设定，请确认后点击"完成并进入工作台"。
                     </p>
                     <Button onClick={handleExportWizard} size="small">
                       导出设定
@@ -750,13 +858,13 @@ export const NewBookWizard = ({
                     {WIZARD_STEP_TYPES.map((type, idx) => {
                       const rec = settings[type];
                       const pending = stepContent[type];
-                      const displayTitle = rec?.title || stepTitles[type] || wizardSteps[idx];
+                      const displayTitle = rec?.title || stepTitles[type] || wizardSettingSteps[idx];
                       const displayContent = rec?.content || pending || '';
                       return (
                         <div key={type} className="border border-slate-200 rounded-2xl p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-semibold text-slate-800">
-                              {idx + 1}. {wizardSteps[idx]} · {displayTitle}
+                              {idx + 2}. {wizardSettingSteps[idx]} · {displayTitle}
                             </span>
                             {!rec && <Tag color="orange">未保存</Tag>}
                           </div>
@@ -770,6 +878,48 @@ export const NewBookWizard = ({
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              ) : isTitleStep ? (
+                <div className="flex flex-col h-full gap-4">
+                  {!draft?.title && savedKeys.size > 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="该草稿已存在历史设定，但还没有正式书名。补一个书名后即可继续，不会影响已保存内容。"
+                    />
+                  )}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-medium text-slate-800 mb-1">先定书名</p>
+                    <p className="text-xs text-gray-500">
+                      基于灵感、题材和当前风格偏好生成候选书名，可直接选择，也可手动修改。
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {titleCandidates.map((title) => (
+                        <Button
+                          key={title}
+                          type={selectedTitle === title ? 'primary' : 'default'}
+                          onClick={() => setSelectedTitle(title)}
+                        >
+                          {title}
+                        </Button>
+                      ))}
+                      {!titleCandidates.length && !titleLoading && (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无书名候选" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">正式书名</p>
+                    <Input
+                      value={selectedTitle}
+                      onChange={(e) => setSelectedTitle(e.target.value)}
+                      placeholder="请选择一个书名，或直接手动输入"
+                      maxLength={100}
+                    />
+                    <p className="text-xs text-gray-400 mt-2">
+                      下一步会以这个书名继续生成世界观、人物、地图等内容。
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -786,7 +936,7 @@ export const NewBookWizard = ({
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {isStreaming && (
+                        {!isTitleStep && isStreaming && (
                           <Tooltip title="停止接收当前流">
                             <Button
                               icon={<PauseOutlined />}
@@ -802,11 +952,11 @@ export const NewBookWizard = ({
                         <Button
                           type="primary"
                           size="small"
-                          loading={isStreaming}
+                          loading={isTitleStep ? titleLoading : isStreaming}
                           icon={<ThunderboltOutlined />}
                           onClick={handleManualGenerate}
                         >
-                          重新生成
+                          {isTitleStep ? '换一批' : '重新生成'}
                         </Button>
                       </div>
                     </div>
@@ -856,7 +1006,7 @@ export const NewBookWizard = ({
           </section>
         </div>
         <div className="flex items-center justify-between">
-          <Button disabled={step === 0 || saving || finishing || isStreaming} onClick={handlePrev}>
+          <Button disabled={step === 0 || saving || savingTitle || finishing || isStreaming || titleLoading} onClick={handlePrev}>
             上一步
           </Button>
           <div className="flex items-center gap-3">
@@ -866,7 +1016,7 @@ export const NewBookWizard = ({
                 完成并进入工作台
               </Button>
             ) : (
-              <Button type="primary" loading={saving} disabled={!canProceed} onClick={handleNext}>
+              <Button type="primary" loading={isTitleStep ? savingTitle : saving} disabled={!canProceed} onClick={handleNext}>
                 下一步
               </Button>
             )}

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 NON_WHITESPACE_PATTERN = re.compile(r"\S")
 JSON_FENCE_RE = re.compile(r'```json\s*\n(.*?)\n\s*```', re.DOTALL)
 MARKDOWN_FENCE_RE = re.compile(r'```markdown\s*\n(.*?)\n\s*```', re.DOTALL)
+TITLE_JSON_FENCE_RE = re.compile(r'```(?:json)?\s*\n(.*?)\n\s*```', re.DOTALL)
 
 # ------------------------------------------------------------------ #
 # System prompts for 6 setting types
@@ -253,6 +254,12 @@ class LLMClient:
         "popular elements with unique twists. Focus on Chinese web fiction market trends."
     )
 
+    SYSTEM_TITLES = (
+        "你是一位擅长中文网络小说命名的资深编辑。"
+        "根据灵感、题材与风格偏好，一次性生成多个适合网文市场的书名候选。"
+        "输出必须简洁，只返回 JSON，不要解释。"
+    )
+
     def __init__(self):
         self._opening_lines = [
             "晨雾压在城墙上，远处传来缓慢而沉重的钟声。",
@@ -439,6 +446,23 @@ class LLMClient:
             return await self._mock_generate_custom_inspiration(custom_prompt, count)
         return await self._real_generate_custom_inspiration(
             custom_prompt, count, user_token=user_token,
+        )
+
+    async def generate_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        style_preference: str = "",
+        count: int = 3,
+        user_token: str | None = None,
+    ) -> list[str]:
+        normalized_count = self._clamp(count, lower=3, upper=5)
+        if await self._should_use_mock(user_token):
+            return await self._mock_generate_titles(
+                inspiration, genre, style_preference, normalized_count,
+            )
+        return await self._real_generate_titles(
+            inspiration, genre, style_preference, normalized_count, user_token=user_token,
         )
 
     async def generate_setting(
@@ -700,6 +724,34 @@ class LLMClient:
                 "analysis_summary": content
             }
 
+    async def _real_generate_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        style_preference: str = "",
+        count: int = 3,
+        user_token: str | None = None,
+    ) -> list[str]:
+        user_msg = (
+            f"灵感：{inspiration}\n"
+            f"题材：{genre or '未指定'}\n"
+            f"风格偏好：{style_preference or '未指定'}\n"
+            f"请生成 {count} 个中文网络小说书名候选。\n"
+            "要求：\n"
+            "1. 每个书名 2-12 个汉字或常见网文短语，避免过长副标题。\n"
+            "2. 风格要贴合给定题材与偏好，具备番茄/网文读感。\n"
+            "3. 彼此有区分度，不要只是改一两个字。\n"
+            "4. 不要编号，不要解释。\n"
+            "5. 只返回 JSON，格式为：{\"titles\": [\"书名1\", \"书名2\"]}"
+        )
+        raw = await self._call_llm(
+            self.SYSTEM_TITLES,
+            user_msg,
+            user_token=user_token,
+            task_type='setting',
+        )
+        return self._extract_title_candidates(raw, count)
+
     async def _real_generate_setting(
         self,
         setting_type: str,
@@ -779,6 +831,37 @@ class LLMClient:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_title_candidates(raw: str, count: int) -> list[str]:
+        payload = raw.strip()
+        fence_match = TITLE_JSON_FENCE_RE.search(payload)
+        if fence_match:
+            payload = fence_match.group(1).strip()
+
+        candidates: list[str] = []
+        try:
+            parsed = json.loads(payload)
+            if isinstance(parsed, dict):
+                candidates = parsed.get('titles') or []
+            elif isinstance(parsed, list):
+                candidates = parsed
+        except json.JSONDecodeError:
+            lines = [line.strip(' -•\t') for line in payload.splitlines()]
+            candidates = lines
+
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            title = str(item).strip().strip('"')
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            cleaned.append(title)
+            if len(cleaned) >= count:
+                break
+
+        return cleaned[:count]
 
     @staticmethod
     def _format_prior_settings(prior_settings: list[dict]) -> str:
@@ -1025,6 +1108,37 @@ class LLMClient:
             "inspirations": inspirations,
             "analysis_summary": f"基于用户自定义需求生成了{count}个{selected_genre}题材创意。"
         }
+
+    async def _mock_generate_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        style_preference: str = "",
+        count: int = 3,
+    ) -> list[str]:
+        await asyncio.sleep(0.05)
+
+        genre_seed = genre.strip() or '新书'
+        style_seed = style_preference.strip() or '爆款'
+        inspiration_seed = re.sub(r'\s+', '', inspiration)[:8] or '灵感'
+        stems = [
+            f"{genre_seed}之{inspiration_seed[:4] or '觉醒'}",
+            f"我在{genre_seed}靠{style_seed[:4] or '天赋'}封神",
+            f"{inspiration_seed[:4] or '主角'}{style_seed[:4] or '逆袭'}录",
+            f"{style_seed[:4] or '逆命'}{genre_seed}：{inspiration_seed[:4] or '崛起'}",
+            f"{inspiration_seed[:4] or '少年'}在{genre_seed}杀疯了",
+        ]
+        seen: set[str] = set()
+        titles: list[str] = []
+        for title in stems:
+            normalized = title.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            titles.append(normalized)
+            if len(titles) >= count:
+                break
+        return titles[:count]
 
     async def _mock_generate_setting(
         self,

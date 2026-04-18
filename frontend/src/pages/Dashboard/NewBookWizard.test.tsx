@@ -13,9 +13,19 @@ const mockStreamState = {
 };
 
 vi.mock('../../api/novels', () => ({
-  getDraftSettings: vi.fn(() => Promise.resolve([])),
+  getDraft: vi.fn(() => Promise.resolve({ id: 1, title: '', current_step: 1 })),
+  getDraftSettings: vi.fn(() => Promise.resolve([
+    {
+      setting_type: 'worldview',
+      title: '世界观',
+      content: '',
+      structured_data: {},
+    },
+  ])),
   saveDraftStep: vi.fn(() => Promise.resolve({})),
   completeDraft: vi.fn(() => Promise.resolve({ id: 1 })),
+  generateDraftTitles: vi.fn(() => Promise.resolve({ titles: ['测试书名甲', '测试书名乙'] })),
+  updateDraft: vi.fn(() => Promise.resolve({ id: 1, title: '测试书名甲' })),
 }));
 
 vi.mock('../../hooks/useSettingStream', () => ({

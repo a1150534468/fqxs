@@ -79,8 +79,32 @@ export const completeWizard = async (id: number | string) => {
 // Draft (12-step wizard pre-project) APIs
 // ------------------------------------------------------------------ //
 
-export const createDraft = async (data: { inspiration: string; title?: string; genre?: string }) => {
+export interface DraftPayload {
+  inspiration: string;
+  title?: string;
+  genre?: string;
+  style_preference?: string;
+}
+
+export interface DraftTitleGenerationPayload {
+  count?: number;
+}
+
+export interface DraftTitleGenerationResponse {
+  titles: string[];
+  style_preference: string;
+}
+
+export const createDraft = async (data: DraftPayload) => {
   const response = await request.post('/drafts/', data);
+  return response.data;
+};
+
+export const generateDraftTitles = async (
+  id: number | string,
+  data: DraftTitleGenerationPayload = {},
+): Promise<DraftTitleGenerationResponse> => {
+  const response = await request.post(`/drafts/${id}/generate-titles/`, data);
   return response.data;
 };
 
