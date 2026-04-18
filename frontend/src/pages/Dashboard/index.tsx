@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, message } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { getNovels, createDraft, deleteNovel, getWorkbenchContext } from '../../api/novels';
@@ -19,8 +19,15 @@ const pickResults = (response: any) => {
   return [];
 };
 
+const parseQueryId = (value: string | null) => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [novels, setNovels] = useState<Novel[]>([]);
   const [workbenchByProject, setWorkbenchByProject] = useState<Record<number, WorkbenchContext>>({});
   const [selectedNovelId, setSelectedNovelId] = useState<number | null>(null);
@@ -41,6 +48,70 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
+    const queryNovelId = parseQueryId(searchParams.get('novelId'));
+    const queryChapterId = parseQueryId(searchParams.get('chapterId'));
+
+    if (queryNovelId !== selectedNovelId) {
+      setSelectedNovelId(queryNovelId);
+    }
+    if (queryChapterId !== selectedChapterId) {
+      setSelectedChapterId(queryChapterId);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const nextNovelId = selectedNovelId != null ? String(selectedNovelId) : null;
+    const nextChapterId = selectedChapterId != null ? String(selectedChapterId) : null;
+    const currentNovelId = searchParams.get('novelId');
+    const currentChapterId = searchParams.get('chapterId');
+
+    if (currentNovelId === nextNovelId && currentChapterId === nextChapterId) {
+      return;
+    }
+
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+
+      if (nextNovelId != null) {
+        nextParams.set('novelId', nextNovelId);
+      } else {
+        nextParams.delete('novelId');
+      }
+
+      if (nextChapterId != null) {
+        nextParams.set('chapterId', nextChapterId);
+      } else {
+        nextParams.delete('chapterId');
+      }
+
+      return nextParams;
+    }, { replace: true });
+  }, [searchParams, selectedNovelId, selectedChapterId, setSearchParams]);
+
+  const fetchWorkbenchContextForProject = useCallback(async (projectId: number) => {
+    setChapterLoading(true);
+    try {
+      const response = await getWorkbenchContext(projectId);
+      setWorkbenchByProject((prev) => ({ ...prev, [projectId]: response }));
+      setNovels((prev) => prev.map((novel) => (
+        novel.id === projectId ? { ...novel, ...response.project } : novel
+      )));
+
+      const list = response.chapters ?? [];
+      setSelectedChapterId((currentChapterId) => {
+        if (selectedNovelId !== projectId) {
+          return currentChapterId;
+        }
+        if (currentChapterId != null && list.some((chapter: { id: number }) => chapter.id === currentChapterId)) {
+          return currentChapterId;
+        }
+        return list[0]?.id ?? null;
+      });
+    } catch (error) { console.error('Failed to fetch workbench context', error); }
+    finally { setChapterLoading(false); }
+  }, [selectedNovelId]);
+
+  useEffect(() => {
     if (selectedNovelId == null) return;
     if (!workbenchByProject[selectedNovelId]) {
       fetchWorkbenchContextForProject(selectedNovelId);
@@ -48,7 +119,7 @@ const Dashboard = () => {
       const list = workbenchByProject[selectedNovelId]?.chapters ?? [];
       if (list.length) setSelectedChapterId(list[0].id);
     }
-  }, [selectedNovelId, workbenchByProject, selectedChapterId]);
+  }, [fetchWorkbenchContextForProject, selectedNovelId, workbenchByProject, selectedChapterId]);
 
   const selectedWorkbench = selectedNovelId != null ? workbenchByProject[selectedNovelId] ?? null : null;
   const selectedNovel = selectedWorkbench?.project ?? novels.find((n) => n.id === selectedNovelId) ?? null;
@@ -60,25 +131,6 @@ const Dashboard = () => {
       const response = await getNovels({ page_size: 100, ordering: '-updated_at' });
       setNovels(pickResults(response));
     } catch (error) { console.error('Failed to fetch novels', error); }
-  };
-
-  const fetchWorkbenchContextForProject = async (projectId: number) => {
-    setChapterLoading(true);
-    try {
-      const response = await getWorkbenchContext(projectId);
-      setWorkbenchByProject((prev) => ({ ...prev, [projectId]: response }));
-      setNovels((prev) => prev.map((novel) => (
-        novel.id === projectId ? { ...novel, ...response.project } : novel
-      )));
-
-      if (projectId === selectedNovelId) {
-        const list = response.chapters ?? [];
-        if (!list.some((chapter: { id: number }) => chapter.id === selectedChapterId)) {
-          setSelectedChapterId(list[0]?.id ?? null);
-        }
-      }
-    } catch (error) { console.error('Failed to fetch workbench context', error); }
-    finally { setChapterLoading(false); }
   };
 
   const aggregatedStats = useMemo(() => {
@@ -139,7 +191,6 @@ const Dashboard = () => {
   const handleSelectNovel = (novelId: number) => {
     setSelectedNovelId(novelId);
     setSelectedChapterId(null);
-    fetchWorkbenchContextForProject(novelId);
     navigate('/workspace');
   };
 
@@ -180,7 +231,6 @@ const Dashboard = () => {
                 onClick={() => {
                   setSelectedNovelId(projectId);
                   setSelectedChapterId(null);
-                  fetchWorkbenchContextForProject(projectId);
                   navigate('/workspace');
                 }}
                 title={`${title} ${state.runMode === 'continuous' ? 'continuous' : state.mode || 'generate'} 中`}

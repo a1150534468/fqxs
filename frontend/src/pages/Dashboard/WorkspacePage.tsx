@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { message, Button, Progress, Tag } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, BookOutlined, FileTextOutlined, WarningOutlined } from '@ant-design/icons';
 import { publishChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
 import { ChapterSidebar } from './ChapterSidebar';
@@ -178,6 +178,30 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     return { published, draft, flagged };
   }, [selectedChapters]);
 
+  const navigationStats = useMemo(() => [
+    {
+      key: 'all',
+      label: '章节总数',
+      value: selectedChapters.length,
+      icon: <BookOutlined className="text-slate-400" />,
+      tone: 'bg-slate-50 text-slate-700',
+    },
+    {
+      key: 'draft',
+      label: '草稿',
+      value: sidebarStats.draft,
+      icon: <FileTextOutlined className="text-amber-500" />,
+      tone: 'bg-amber-50 text-amber-700',
+    },
+    {
+      key: 'flagged',
+      label: '待检查',
+      value: sidebarStats.flagged,
+      icon: <WarningOutlined className="text-rose-500" />,
+      tone: 'bg-rose-50 text-rose-700',
+    },
+  ], [selectedChapters.length, sidebarStats.draft, sidebarStats.flagged]);
+
   return (
     <div className="flex h-screen flex-col bg-[#eef2f7]">
       <div className="flex items-center gap-6 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
@@ -256,11 +280,28 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
-                章节导航
+            <div className="min-h-0 flex flex-1 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">章节导航</div>
+                    <div className="mt-1 text-[11px] text-slate-400">选章、检查状态、快速发布都放在这里</div>
+                  </div>
+                  <Tag color="blue" className="mr-0">{selectedChapters.length} 章</Tag>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {navigationStats.map((stat) => (
+                    <div key={stat.key} className={`rounded-2xl px-3 py-2 ${stat.tone}`}>
+                      <div className="flex items-center gap-1 text-[11px]">
+                        {stat.icon}
+                        <span>{stat.label}</span>
+                      </div>
+                      <div className="mt-1 text-base font-semibold">{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="h-full overflow-y-auto px-2 py-2">
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2" data-testid="chapter-sidebar-scroll">
                 <ChapterSidebar
                   chapters={selectedChapters}
                   selectedChapterId={selectedChapterId}
@@ -287,18 +328,20 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
           </main>
 
           <aside className="min-h-0 w-full overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm xl:w-[25rem] xl:flex-shrink-0">
-            <SettingsPanel
-              settings={settings}
-              chapter={selectedChapter}
-              chapterSummaries={chapterSummaries}
-              storylines={storylines}
-              plotArcPoints={plotArcPoints}
-              knowledgeFacts={knowledgeFacts}
-              foreshadowItems={foreshadowItems}
-              styleProfiles={styleProfiles}
-              workbenchHighlights={workbenchHighlights}
-              knowledgeGraph={knowledgeGraph}
-            />
+            <div className="flex h-full min-h-0 flex-col bg-slate-50/40">
+              <SettingsPanel
+                settings={settings}
+                chapter={selectedChapter}
+                chapterSummaries={chapterSummaries}
+                storylines={storylines}
+                plotArcPoints={plotArcPoints}
+                knowledgeFacts={knowledgeFacts}
+                foreshadowItems={foreshadowItems}
+                styleProfiles={styleProfiles}
+                workbenchHighlights={workbenchHighlights}
+                knowledgeGraph={knowledgeGraph}
+              />
+            </div>
           </aside>
         </div>
       </div>
