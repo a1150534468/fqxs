@@ -1,12 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Collapse, Empty, InputNumber, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { CaretRightOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { Alert, Button, Empty, InputNumber, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
+import { PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import type { StreamState } from '../../hooks/useChapterStream';
 import type {
   Chapter,
-  ContinuityAlertRecord,
-  FocusCardRecord,
-  MicroBeatRecord,
   Novel,
   WorkbenchHighlights,
 } from './types';
@@ -33,21 +30,7 @@ const modeLabel = {
 
 type CenterTabKey = 'stream' | 'manuscript' | 'logs';
 
-const alertColorMap: Record<ContinuityAlertRecord['level'], string> = {
-  info: 'blue',
-  warning: 'orange',
-  critical: 'red',
-};
-
 const centerPanelHeightClass = 'h-[min(34rem,calc(100vh-24rem))] min-h-[20rem]';
-
-const isSnapshotShape = (
-  value: unknown,
-): value is {
-  focus_card?: FocusCardRecord;
-  micro_beats?: MicroBeatRecord[];
-  continuity_alerts?: ContinuityAlertRecord[];
-} => typeof value === 'object' && value !== null;
 
 export const WritingCenter: React.FC<WritingCenterProps> = ({
   novel,
@@ -89,26 +72,8 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
 
   const selectedContent = selectedChapter?.final_content || selectedChapter?.raw_content || '';
   const actionLabel = modeLabel[streamState.mode || 'generate'];
-  const snapshot = isSnapshotShape(selectedChapter?.context_snapshot)
-    ? selectedChapter?.context_snapshot
-    : undefined;
 
-  const focusCard = useMemo<FocusCardRecord | null>(
-    () => snapshot?.focus_card || highlights?.focus_card || null,
-    [highlights?.focus_card, snapshot?.focus_card],
-  );
-
-  const microBeats = useMemo<MicroBeatRecord[]>(
-    () => snapshot?.micro_beats || highlights?.micro_beats || [],
-    [highlights?.micro_beats, snapshot?.micro_beats],
-  );
-
-  const continuityAlerts = useMemo<ContinuityAlertRecord[]>(
-    () => snapshot?.continuity_alerts || highlights?.continuity_alerts || [],
-    [highlights?.continuity_alerts, snapshot?.continuity_alerts],
-  );
-
-  const streamPlaceholder = focusCard?.mission || highlights?.recommended_focus
+  const streamPlaceholder = highlights?.focus_card?.mission || highlights?.recommended_focus
     || '选择一个章节后可查看正文，也可以直接生成下一章。';
   const loopStartChapter = streamState.startChapter ?? nextChapterNumber;
 
@@ -248,8 +213,8 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
         ) : null}
       </div>
 
-      <div className="grid flex-1 min-h-0 gap-4 p-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.9fr)]">
-        <div className="min-h-0 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+      <div className="flex-1 min-h-0 p-4">
+        <div className="h-full min-h-0 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
           <Tabs
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as CenterTabKey)}
@@ -319,154 +284,6 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                       ))
                     )}
                   </div>
-                ),
-              },
-            ]}
-          />
-        </div>
-
-        <div className="min-h-0 overflow-y-auto">
-          <Collapse
-            defaultActiveKey={['focus-card']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined rotate={isActive ? 90 : 0} className="text-slate-400" />
-            )}
-            className="writing-hints-collapse"
-            items={[
-              {
-                key: 'focus-card',
-                label: (
-                  <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                    本章战术卡
-                  </span>
-                ),
-                children: focusCard?.mission ? (
-                  <div className="space-y-3 text-sm text-slate-600">
-                    <div>
-                      <div className="text-xs text-slate-400">主任务</div>
-                      <div className="mt-1 font-medium text-slate-800">{focusCard.mission}</div>
-                    </div>
-                    {focusCard.conflict ? (
-                      <div>
-                        <div className="text-xs text-slate-400">核心冲突</div>
-                        <div className="mt-1">{focusCard.conflict}</div>
-                      </div>
-                    ) : null}
-                    {focusCard.key_turn ? (
-                      <div>
-                        <div className="text-xs text-slate-400">关键转折</div>
-                        <div className="mt-1">{focusCard.key_turn}</div>
-                      </div>
-                    ) : null}
-                    {focusCard.ending_hook ? (
-                      <div>
-                        <div className="text-xs text-slate-400">收尾钩子</div>
-                        <div className="mt-1">{focusCard.ending_hook}</div>
-                      </div>
-                    ) : null}
-                    {focusCard.must_payoff?.length ? (
-                      <div>
-                        <div className="text-xs text-slate-400">本章优先触碰</div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {focusCard.must_payoff.map((item) => (
-                            <Tag key={item} color="gold" className="mr-0">{item}</Tag>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={
-                      <span className="text-xs text-slate-400">
-                        生成第一章后自动填充战术卡
-                      </span>
-                    }
-                  />
-                ),
-              },
-              {
-                key: 'micro-beats',
-                label: (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                      Micro Beats
-                    </span>
-                    {microBeats.length ? (
-                      <Tag color="blue" className="mr-0 shrink-0">{microBeats.length} 段</Tag>
-                    ) : null}
-                  </div>
-                ),
-                children: microBeats.length ? (
-                  <div className="space-y-3">
-                    {microBeats.map((beat) => (
-                      <div key={`${beat.index}-${beat.label}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium text-slate-800 text-sm">
-                            {beat.index}. {beat.label}
-                          </div>
-                          <Tag color="blue" className="mr-0 shrink-0">
-                            {beat.target_words} 字
-                          </Tag>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-400">聚焦：{beat.focus}</div>
-                        <div className="mt-2 text-sm leading-6 text-slate-600">{beat.objective}</div>
-                      </div>
-                    ))}
-                    <div className="pt-1 text-xs text-slate-400">沿着节拍生成，不要一次推太远</div>
-                  </div>
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={
-                      <span className="text-xs text-slate-400">
-                        生成章节后自动生成节拍规划
-                      </span>
-                    }
-                  />
-                ),
-              },
-              {
-                key: 'continuity-alerts',
-                label: (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                      连续性提醒
-                    </span>
-                    {continuityAlerts.length ? (
-                      <Tag
-                        color={continuityAlerts.some(a => a.level === 'critical') ? 'red' : 'orange'}
-                        className="mr-0 shrink-0"
-                      >
-                        {continuityAlerts.length} 条
-                      </Tag>
-                    ) : null}
-                  </div>
-                ),
-                children: continuityAlerts.length ? (
-                  <div className="space-y-3">
-                    {continuityAlerts.map((alert) => (
-                      <div key={`${alert.level}-${alert.title}`} className="rounded-2xl border border-slate-100 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Tag color={alertColorMap[alert.level]} className="mr-0">
-                            {alert.level}
-                          </Tag>
-                          <div className="font-medium text-slate-800 text-sm">{alert.title}</div>
-                        </div>
-                        <div className="mt-2 text-sm leading-6 text-slate-600">{alert.detail}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={
-                      <span className="text-xs text-slate-400">
-                        暂无连续性警报
-                      </span>
-                    }
-                  />
                 ),
               },
             ]}
