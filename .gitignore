@@ -35,3 +35,4 @@ Thumbs.db
 .ccb/*
 !.ccb/ccb.config
 .claude/worktrees/
+.worktrees/
