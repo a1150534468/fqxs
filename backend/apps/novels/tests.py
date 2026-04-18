@@ -12,6 +12,7 @@ from apps.chapters.models import Chapter, ChapterSummary
 from apps.novels.models import (
     ForeshadowItem,
     KnowledgeFact,
+    NovelDraft,
     NovelProject,
     NovelSetting,
     PlotArcPoint,
@@ -55,6 +56,42 @@ class NovelProjectModelTest(TestCase):
         )
 
         self.assertEqual(str(project), 'String Novel')
+
+
+class DraftAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='draft-owner',
+            email='draft@example.com',
+            password='testpass123',
+        )
+        response = self.client.post(
+            reverse('user-login'),
+            {
+                'username': 'draft-owner',
+                'password': 'testpass123',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+
+    def test_create_draft_persists_style_preference(self):
+        response = self.client.post(
+            reverse('draft-list'),
+            {
+                'inspiration': '宗门废柴逆袭成天命剑修',
+                'genre': '玄幻',
+                'style_preference': '热血升级流',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['style_preference'], '热血升级流')
+        draft = NovelDraft.objects.get(pk=response.data['id'])
+        self.assertEqual(draft.style_preference, '热血升级流')
 
 
 class NovelProjectAPITest(TestCase):

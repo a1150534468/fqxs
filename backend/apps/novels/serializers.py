@@ -144,7 +144,7 @@ class NovelDraftSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NovelDraft
-        fields = ['id', 'inspiration', 'title', 'genre', 'current_step', 'is_completed', 'converted_project', 'settings', 'created_at', 'updated_at']
+        fields = ['id', 'inspiration', 'title', 'genre', 'style_preference', 'current_step', 'is_completed', 'converted_project', 'settings', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_completed', 'converted_project', 'created_at', 'updated_at']
 
 

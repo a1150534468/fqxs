@@ -129,6 +129,7 @@ class NovelDraft(models.Model):
     inspiration = models.TextField(verbose_name='灵感输入')
     title = models.CharField(max_length=200, blank=True, verbose_name='暂定书名')
     genre = models.CharField(max_length=50, blank=True, default='未分类', verbose_name='分类')
+    style_preference = models.CharField(max_length=100, blank=True, default='', verbose_name='风格偏好')
     current_step = models.IntegerField(default=0, verbose_name='当前步骤')
     is_completed = models.BooleanField(default=False, verbose_name='是否已完成转化')
     converted_project = models.ForeignKey(
