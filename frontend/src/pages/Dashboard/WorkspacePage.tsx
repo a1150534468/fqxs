@@ -180,87 +180,89 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
   return (
     <div className="flex h-screen flex-col bg-[#eef2f7]">
-      <div className="flex items-center gap-6 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          size="small"
-          onClick={() => navigate('/')}
-          className="text-slate-500"
-        />
-        <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-slate-800">
-            {selectedNovel?.title ?? '未选择书目'}
-          </div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
-            <span>{selectedNovel?.genre || '未分类'}</span>
-            {workbenchHighlights?.active_storyline?.name && (
-              <Tag color="cyan" className="mr-0">
-                {workbenchHighlights.active_storyline.name}
-              </Tag>
-            )}
-          </div>
-        </div>
-        <div className="ml-auto flex items-center gap-5">
-          {topBarStats.map((stat) => (
-            <div key={stat.label} className="flex min-w-[70px] flex-col items-center">
-              <span className="text-[11px] text-slate-400">{stat.label}</span>
-              <span className="text-sm font-medium text-slate-700">{stat.value}</span>
+      <div className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex w-full max-w-[1780px] flex-col gap-4 px-4 py-3 sm:px-6 xl:flex-row xl:items-center">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            size="small"
+            onClick={() => navigate('/')}
+            className="text-slate-500"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 xl:max-w-[21rem]">
+              <div className="truncate text-base font-semibold text-slate-800">
+                {selectedNovel?.title ?? '未选择书目'}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span>{selectedNovel?.genre || '未分类'}</span>
+                {workbenchHighlights?.active_storyline?.name && (
+                  <Tag color="cyan" className="mr-0">
+                    {workbenchHighlights.active_storyline.name}
+                  </Tag>
+                )}
+              </div>
             </div>
-          ))}
+
+            <div className="min-w-0 flex-1 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 xl:max-w-[34rem]">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                    项目总览
+                  </div>
+                  <div className="mt-1 truncate text-sm font-medium text-slate-800">
+                    当前焦点：第 {workbenchHighlights?.focus_chapter_number ?? selectedNovel?.current_chapter ?? 1} 章
+                  </div>
+                  <div className="mt-1 line-clamp-1 text-xs text-slate-500">
+                    {workbenchHighlights?.focus_card?.mission || workbenchHighlights?.recommended_focus || '优先完成当前章节，再进入下一章的情节推进。'}
+                  </div>
+                </div>
+                <div className="w-full md:max-w-[11rem]">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>总进度</span>
+                    <span>{aggregatedStats.completionRate}%</span>
+                  </div>
+                  <Progress
+                    percent={aggregatedStats.completionRate}
+                    showInfo={false}
+                    strokeColor="#0ea5e9"
+                    trailColor="#e2e8f0"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <div className="rounded-xl bg-white px-2.5 py-1 text-[11px] text-slate-500">
+                  已发布 <span className="ml-1 font-semibold text-slate-800">{sidebarStats.published}</span>
+                </div>
+                <div className="rounded-xl bg-amber-50 px-2.5 py-1 text-[11px] text-amber-600">
+                  草稿 <span className="ml-1 font-semibold text-amber-700">{sidebarStats.draft}</span>
+                </div>
+                <div className="rounded-xl bg-rose-50 px-2.5 py-1 text-[11px] text-rose-600">
+                  待检查 <span className="ml-1 font-semibold text-rose-700">{sidebarStats.flagged}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 xl:w-[30rem] xl:grid-cols-4">
+              {topBarStats.map((stat) => (
+                <div key={stat.label} className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <div className="text-[11px] text-slate-400">{stat.label}</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-800">{stat.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 p-4">
+      <div className="flex flex-1 min-h-0 px-4 pb-4 pt-4 sm:px-6">
         <div className="mx-auto flex h-full w-full max-w-[1780px] min-h-0 flex-col gap-4 xl:flex-row">
-          <aside className="flex w-full flex-col gap-4 xl:w-[19.5rem] xl:flex-shrink-0">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-                项目总览
-              </div>
-              <div className="mt-3 text-lg font-semibold text-slate-800">
-                {selectedNovel?.title ?? '未选择书目'}
-              </div>
-              <div className="mt-2 text-sm leading-6 text-slate-500">
-                {workbenchHighlights?.recommended_focus || '优先完成当前章节，再进入下一章的情节推进。'}
-              </div>
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
-                  <span>总进度</span>
-                  <span>{aggregatedStats.completionRate}%</span>
-                </div>
-                <Progress percent={aggregatedStats.completionRate} showInfo={false} strokeColor="#0ea5e9" />
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-slate-50 px-3 py-2">
-                  <div className="text-[11px] text-slate-400">已发布</div>
-                  <div className="mt-1 text-base font-semibold text-slate-800">{sidebarStats.published}</div>
-                </div>
-                <div className="rounded-2xl bg-amber-50 px-3 py-2">
-                  <div className="text-[11px] text-amber-500">草稿</div>
-                  <div className="mt-1 text-base font-semibold text-amber-700">{sidebarStats.draft}</div>
-                </div>
-                <div className="rounded-2xl bg-rose-50 px-3 py-2">
-                  <div className="text-[11px] text-rose-500">待检查</div>
-                  <div className="mt-1 text-base font-semibold text-rose-700">{sidebarStats.flagged}</div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-2xl bg-[#0f172a] px-4 py-3 text-slate-200">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">当前焦点</div>
-                <div className="mt-2 text-sm font-medium">
-                  第 {workbenchHighlights?.focus_chapter_number ?? selectedNovel?.current_chapter ?? 1} 章
-                </div>
-                <div className="mt-2 text-xs leading-5 text-slate-300">
-                  {workbenchHighlights?.focus_card?.mission || '围绕当前主线推进，并在章节尾部留下下一步钩子。'}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <aside className="flex min-h-0 w-full flex-col xl:w-[16.5rem] xl:flex-shrink-0">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
                 章节导航
               </div>
-              <div className="h-full overflow-y-auto px-2 py-2">
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
                 <ChapterSidebar
                   chapters={selectedChapters}
                   selectedChapterId={selectedChapterId}
