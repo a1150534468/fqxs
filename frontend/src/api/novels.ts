@@ -148,6 +148,13 @@ export const completeDraft = async (id: number | string) => {
 };
 
 export const generateBookTitles = async (data: { inspiration: string; genre?: string; count?: number }) => {
-  const response = await fastapiClient.post('/api/ai/generate/book-titles', data);
+  // Add timestamp to prevent caching
+  const timestamp = Date.now();
+  console.log('[generateBookTitles] Calling API with:', { ...data, timestamp });
+  const response = await fastapiClient.post('/api/ai/generate/book-titles', {
+    ...data,
+    _timestamp: timestamp,
+  });
+  console.log('[generateBookTitles] API response:', response.data);
   return response.data;
 };

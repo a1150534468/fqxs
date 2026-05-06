@@ -148,6 +148,7 @@ export const NewBookWizard = ({
   const handleGenerateTitles = useCallback(async (inspiration?: string) => {
     const inspirationText = inspiration || pendingTitle || '新书创意';
     setGeneratingTitles(true);
+    setTitleSuggestions([]); // Clear previous suggestions
     try {
       const res = await generateBookTitles({
         inspiration: inspirationText,
