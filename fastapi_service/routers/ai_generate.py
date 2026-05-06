@@ -74,6 +74,7 @@ async def continue_content(
     content, word_count = await llm_client.continue_content(
         current_content=payload.current_content,
         continue_length=payload.continue_length,
+        context_payload=payload.context_payload,
         user_token=token,
     )
     return ContinueResponse(continued_content=content, word_count=word_count)

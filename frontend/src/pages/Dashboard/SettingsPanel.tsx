@@ -1,10 +1,12 @@
-import React, { useMemo } from 'react';
-import { Collapse, Empty, Tabs, Tag } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Collapse, Empty, Input, Segmented, Tabs, Tag } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import MDEditor from '@uiw/react-md-editor';
 import { InsightGraph } from '../../components/charts/InsightGraph';
 import type {
+  ChapterAssetSnapshot,
   Chapter,
+  ChapterReviewRecord,
   ChapterSummaryRecord,
   ContinuityAlertRecord,
   FocusCardRecord,
@@ -33,11 +35,23 @@ interface SettingsPanelProps {
   settings: NovelSettingRecord[];
   chapter: Chapter | null;
   chapterSummaries: ChapterSummaryRecord[];
+  chapterReviews: ChapterReviewRecord[];
   storylines: StorylineRecord[];
   plotArcPoints: PlotArcPointRecord[];
   knowledgeFacts: KnowledgeFactRecord[];
   foreshadowItems: ForeshadowItemRecord[];
+  chapterAssetIndex?: Record<string, ChapterAssetSnapshot>;
   styleProfiles: StyleProfileRecord[];
+  onSaveChapterReview?: (
+    chapterId: number,
+    payload: {
+      status?: 'pending' | 'approved' | 'revise';
+      review_notes?: string;
+      generate_ai?: boolean;
+      apply_ai_to_notes?: boolean;
+    },
+    options?: { silent?: boolean },
+  ) => Promise<ChapterReviewRecord>;
   workbenchHighlights?: WorkbenchHighlights;
   knowledgeGraph?: KnowledgeGraphPayload;
 }
@@ -74,14 +88,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   settings,
   chapter,
   chapterSummaries,
+  chapterReviews,
   storylines,
   plotArcPoints,
   knowledgeFacts,
   foreshadowItems,
+  chapterAssetIndex,
   styleProfiles,
+  onSaveChapterReview,
   workbenchHighlights,
   knowledgeGraph,
 }) => {
+  const [reviewStatusDraft, setReviewStatusDraft] = useState<'pending' | 'approved' | 'revise'>('pending');
+  const [reviewNotesDraft, setReviewNotesDraft] = useState('');
+  const [aiReviewDraft, setAiReviewDraft] = useState('');
+  const [aiActionItemsDraft, setAiActionItemsDraft] = useState<string[]>([]);
+  const [savingReview, setSavingReview] = useState(false);
+  const [generatingReview, setGeneratingReview] = useState(false);
+
   const settingsMap = useMemo(() => {
     const map: Record<string, NovelSettingRecord> = {};
     settings.forEach((item) => {
@@ -97,10 +121,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       || chapterSummaries[chapterSummaries.length - 1];
   }, [chapter, chapterSummaries]);
 
+  const matchedChapterSummary = useMemo(() => {
+    if (!chapter) return null;
+    return chapterSummaries.find((item) => item.chapter === chapter.id)
+      || chapterSummaries.find((item) => item.chapter_number === chapter.chapter_number)
+      || null;
+  }, [chapter, chapterSummaries]);
+
   const latestStyleAnalysis = useMemo(
     () => styleProfiles.find((item) => item.profile_type === 'chapter_analysis'),
     [styleProfiles],
   );
+
+  const currentChapterReview = useMemo(() => {
+    if (!chapter) return null;
+    return chapterReviews.find((item) => item.chapter === chapter.id)
+      || chapterReviews.find((item) => item.chapter_number === chapter.chapter_number)
+      || null;
+  }, [chapter, chapterReviews]);
+
+  const chapterAssetSnapshot = useMemo<ChapterAssetSnapshot | null>(() => {
+    if (!chapter || !chapterAssetIndex) return null;
+    return chapterAssetIndex[String(chapter.chapter_number)] || null;
+  }, [chapter, chapterAssetIndex]);
 
   const graphProjects = useMemo(() => {
     if (!knowledgeGraph?.nodes) return [];
@@ -137,6 +180,162 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [snapshot?.continuity_alerts, workbenchHighlights?.continuity_alerts],
   );
 
+  const chapterSummaryText = useMemo(
+    () => matchedChapterSummary?.summary || chapter?.summary || '',
+    [chapter?.summary, matchedChapterSummary?.summary],
+  );
+
+  const chapterKeyEvents = useMemo(
+    () => (matchedChapterSummary?.key_events || []).filter(Boolean),
+    [matchedChapterSummary?.key_events],
+  );
+
+  const chapterOpenThreads = useMemo(() => {
+    const values = [
+      ...(chapter?.open_threads || []),
+      ...(matchedChapterSummary?.open_threads || []),
+    ]
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(values));
+  }, [chapter?.open_threads, matchedChapterSummary?.open_threads]);
+
+  const chapterKnowledgeFacts = useMemo(() => {
+    if (!chapter) return [];
+    if (chapterAssetSnapshot?.knowledge_facts?.length) return chapterAssetSnapshot.knowledge_facts;
+    return knowledgeFacts.filter((item) => (
+      item.chapter === chapter.id || item.chapter_number === chapter.chapter_number
+    )).slice(0, 8);
+  }, [chapter, chapterAssetSnapshot?.knowledge_facts, knowledgeFacts]);
+
+  const introducedForeshadowItems = useMemo(() => {
+    if (!chapter) return [];
+    if (chapterAssetSnapshot?.introduced_foreshadow_items?.length) {
+      return chapterAssetSnapshot.introduced_foreshadow_items;
+    }
+    return foreshadowItems.filter(
+      (item) => item.introduced_in_chapter_number === chapter.chapter_number,
+    ).slice(0, 6);
+  }, [chapter, chapterAssetSnapshot?.introduced_foreshadow_items, foreshadowItems]);
+
+  const recommendedForeshadowItems = useMemo(() => {
+    if (!chapter) return [];
+    if (chapterAssetSnapshot?.recommended_foreshadow_items?.length) {
+      return chapterAssetSnapshot.recommended_foreshadow_items;
+    }
+    return foreshadowItems.filter((item) => (
+      item.status !== 'resolved'
+      && item.introduced_in_chapter_number
+      && item.introduced_in_chapter_number < chapter.chapter_number
+      && (item.expected_payoff_chapter || chapter.chapter_number + 2) <= chapter.chapter_number + 1
+    )).slice(0, 4);
+  }, [chapter, chapterAssetSnapshot?.recommended_foreshadow_items, foreshadowItems]);
+
+  const chapterConsistencyRisks = useMemo(() => {
+    const risks = chapter?.consistency_status?.risks;
+    if (!Array.isArray(risks)) return [];
+    return risks.map((item) => String(item || '').trim()).filter(Boolean);
+  }, [chapter?.consistency_status?.risks]);
+
+  const chapterCheckedEntities = useMemo(() => {
+    const entities = chapter?.consistency_status?.checked_entities;
+    if (!Array.isArray(entities)) return [];
+    return entities.map((item) => String(item || '').trim()).filter(Boolean);
+  }, [chapter?.consistency_status?.checked_entities]);
+
+  const chapterCharacters = useMemo(
+    () => chapterAssetSnapshot?.character_elements || [],
+    [chapterAssetSnapshot?.character_elements],
+  );
+
+  const chapterLocations = useMemo(
+    () => chapterAssetSnapshot?.location_elements || [],
+    [chapterAssetSnapshot?.location_elements],
+  );
+
+  const chapterEventCards = useMemo(
+    () => chapterAssetSnapshot?.event_cards || [],
+    [chapterAssetSnapshot?.event_cards],
+  );
+
+  const chapterQualityIssues = useMemo(
+    () => chapterAssetSnapshot?.quality_issues || [],
+    [chapterAssetSnapshot?.quality_issues],
+  );
+
+  const chapterRepairActions = useMemo(
+    () => chapterAssetSnapshot?.repair_actions || [],
+    [chapterAssetSnapshot?.repair_actions],
+  );
+
+  const estimatedReviewModificationRate = useMemo(() => {
+    if (typeof currentChapterReview?.modification_rate === 'number') {
+      return currentChapterReview.modification_rate;
+    }
+
+    const original = (chapter?.raw_content || '').replace(/\s/g, '');
+    const revised = ((chapter?.final_content || chapter?.raw_content || '')).replace(/\s/g, '');
+    if (!original) return revised ? 100 : 0;
+    const compareLength = Math.min(original.length, revised.length);
+    let sameCount = 0;
+    for (let index = 0; index < compareLength; index += 1) {
+      if (original[index] === revised[index]) sameCount += 1;
+    }
+    const denominator = Math.max(original.length, revised.length, 1);
+    return Math.max(0, Math.round((1 - (sameCount / denominator)) * 100));
+  }, [chapter?.final_content, chapter?.raw_content, currentChapterReview?.modification_rate]);
+
+  useEffect(() => {
+    setReviewStatusDraft(currentChapterReview?.status || chapter?.review_status || 'pending');
+    setReviewNotesDraft(currentChapterReview?.review_notes || '');
+    setAiReviewDraft(currentChapterReview?.ai_review || '');
+    setAiActionItemsDraft(currentChapterReview?.ai_action_items || []);
+  }, [
+    chapter?.id,
+    chapter?.review_status,
+    currentChapterReview?.ai_action_items,
+    currentChapterReview?.ai_review,
+    currentChapterReview?.review_notes,
+    currentChapterReview?.status,
+  ]);
+
+  const handleGenerateAiReview = async () => {
+    if (!chapter || !onSaveChapterReview) return;
+    setGeneratingReview(true);
+    try {
+      const review = await onSaveChapterReview(chapter.id, { generate_ai: true });
+      setReviewStatusDraft(review.status);
+      setAiReviewDraft(review.ai_review || '');
+      setAiActionItemsDraft(review.ai_action_items || []);
+      if (!reviewNotesDraft.trim() && review.ai_review) {
+        setReviewNotesDraft(review.ai_review);
+      }
+    } catch {
+      // WorkspacePage already surfaces the error message.
+    } finally {
+      setGeneratingReview(false);
+    }
+  };
+
+  const handleSaveReview = async () => {
+    if (!chapter || !onSaveChapterReview) return;
+    setSavingReview(true);
+    try {
+      const review = await onSaveChapterReview(chapter.id, {
+        status: reviewStatusDraft,
+        review_notes: reviewNotesDraft,
+      });
+      setReviewStatusDraft(review.status);
+      setReviewNotesDraft(review.review_notes || '');
+      setAiReviewDraft(review.ai_review || '');
+      setAiActionItemsDraft(review.ai_action_items || []);
+    } catch {
+      // WorkspacePage already surfaces the error message.
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
   const settingsTabItems = WIZARD_STEP_TYPES.map((type) => ({
     key: type,
     label: STEP_LABELS[type] || type,
@@ -172,6 +371,396 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <Tabs
           className="h-full"
           items={[
+            {
+              key: 'review',
+              label: '审阅',
+              children: chapter ? (
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="审阅状态">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Tag color={reviewStatusDraft === 'approved' ? 'green' : reviewStatusDraft === 'revise' ? 'orange' : 'default'} className="mr-0">
+                          {reviewStatusDraft === 'approved' ? '已定稿' : reviewStatusDraft === 'revise' ? '需修订' : '待阅'}
+                        </Tag>
+                        <Tag color={estimatedReviewModificationRate >= 15 ? 'blue' : 'red'} className="mr-0">
+                          修改率 {estimatedReviewModificationRate}%
+                        </Tag>
+                        {currentChapterReview?.reviewer_username ? (
+                          <Tag color="cyan" className="mr-0">
+                            {currentChapterReview.reviewer_username}
+                          </Tag>
+                        ) : null}
+                      </div>
+
+                      <Segmented
+                        block
+                        value={reviewStatusDraft}
+                        onChange={(value) => setReviewStatusDraft(value as 'pending' | 'approved' | 'revise')}
+                        options={[
+                          { label: '待阅', value: 'pending' },
+                          { label: '已定稿', value: 'approved' },
+                          { label: '需修订', value: 'revise' },
+                        ]}
+                      />
+
+                      <div>
+                        <div className="mb-2 text-xs text-slate-400">审阅意见</div>
+                        <Input.TextArea
+                          value={reviewNotesDraft}
+                          onChange={(event) => setReviewNotesDraft(event.target.value)}
+                          rows={8}
+                          placeholder="记录人工审稿结论、问题位置和修改建议。"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={() => setReviewNotesDraft(aiReviewDraft || reviewNotesDraft)}
+                          disabled={!aiReviewDraft}
+                        >
+                          写入 AI 建议
+                        </Button>
+                        <Button
+                          onClick={handleGenerateAiReview}
+                          loading={generatingReview}
+                        >
+                          生成 AI 审读建议
+                        </Button>
+                        <Button
+                          type="primary"
+                          onClick={handleSaveReview}
+                          loading={savingReview}
+                        >
+                          保存审阅
+                        </Button>
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="AI 审读建议">
+                    {aiReviewDraft ? (
+                      <div className="space-y-4 text-sm">
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3 leading-6 text-slate-700 whitespace-pre-wrap">
+                          {aiReviewDraft}
+                        </div>
+                        <div>
+                          <div className="mb-2 text-xs text-slate-400">动作清单</div>
+                          <div className="min-w-0 flex flex-wrap gap-2">
+                            {aiActionItemsDraft.length
+                              ? aiActionItemsDraft.map((item, index) => (
+                                <Tag key={`${item}-${index}`} color="blue" className="mr-0 whitespace-normal break-words">
+                                  {item}
+                                </Tag>
+                              ))
+                              : <span className="text-slate-300">暂无动作建议</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <Empty description="还没有 AI 审读建议" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <Empty description="请选择一个章节后开始审阅" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </div>
+              ),
+            },
+            {
+              key: 'chapter',
+              label: '章节',
+              children: chapter ? (
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                  <PanelCard title="当前章节">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-slate-800">
+                              第 {chapter.chapter_number} 章
+                              {chapter.title ? ` · ${chapter.title}` : ''}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-400">
+                              更新时间 {chapter.updated_at ? chapter.updated_at.slice(5, 16).replace('T', ' ') : '--'}
+                            </div>
+                          </div>
+                          <Tag color={chapter.status === 'published' ? 'blue' : chapter.status === 'draft' ? 'gold' : 'default'} className="mr-0">
+                            {chapter.status || 'draft'}
+                          </Tag>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Tag color="cyan" className="mr-0">{chapter.word_count || 0} 字</Tag>
+                          {chapterConsistencyRisks.length ? (
+                            <Tag color="orange" className="mr-0">{chapterConsistencyRisks.length} 项风险</Tag>
+                          ) : (
+                            <Tag color="green" className="mr-0">一致性正常</Tag>
+                          )}
+                          {recommendedForeshadowItems.length ? (
+                            <Tag color="gold" className="mr-0">{recommendedForeshadowItems.length} 条待回收</Tag>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">本章摘要</div>
+                        <div className="mt-1 leading-6 text-slate-700">
+                          {chapterSummaryText || '暂无摘要'}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="关键事件与线索">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">关键事件</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterKeyEvents.length
+                            ? chapterKeyEvents.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="blue" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无关键事件</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">开放线索</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterOpenThreads.length
+                            ? chapterOpenThreads.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="gold" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无开放线索</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="事件卡">
+                    {chapterEventCards.length ? (
+                      <div className="space-y-3 text-sm">
+                        {chapterEventCards.map((item, index) => (
+                          <div key={`${item.label}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Tag color={item.tension_level === 'high' ? 'red' : item.tension_level === 'medium' ? 'orange' : 'blue'} className="mr-0">
+                                {item.tension_level}
+                              </Tag>
+                              <Tag color="purple" className="mr-0">{item.event_type}</Tag>
+                              <div className="font-medium text-slate-800">{item.label}</div>
+                            </div>
+                            <div className="mt-2 text-xs leading-5 text-slate-500">{item.evidence}</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {item.actors?.map((actor) => (
+                                <Tag key={`${item.label}-${actor}`} color="blue" className="mr-0 whitespace-normal break-words">
+                                  {actor}
+                                </Tag>
+                              ))}
+                              {item.locations?.map((location) => (
+                                <Tag key={`${item.label}-${location}`} color="cyan" className="mr-0 whitespace-normal break-words">
+                                  {location}
+                                </Tag>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="本章暂未提取出事件卡" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="关联事实">
+                    {chapterKnowledgeFacts.length ? (
+                      <div className="space-y-2">
+                        {chapterKnowledgeFacts.map((fact) => (
+                          <div key={fact.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                            <div className="text-slate-800">
+                              {fact.subject} {fact.predicate} {fact.object}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              置信度 {Math.round((fact.confidence || 0) * 100)}%
+                              {fact.source_excerpt ? ` · ${fact.source_excerpt.slice(0, 36)}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="本章暂无关联事实" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="章节元素">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">人物</div>
+                        {chapterCharacters.length ? (
+                          <div className="mt-2 space-y-2">
+                            {chapterCharacters.map((item) => (
+                              <div key={`character-${item.name}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <Tag color="blue" className="mr-0">角色</Tag>
+                                  <div className="font-medium text-slate-800">{item.name}</div>
+                                  {item.role ? (
+                                    <span className="text-xs text-slate-400">{item.role}</span>
+                                  ) : null}
+                                </div>
+                                {item.note ? (
+                                  <div className="mt-2 text-xs leading-5 text-slate-500">{item.note}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">本章暂无命中的角色设定</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">地点</div>
+                        {chapterLocations.length ? (
+                          <div className="mt-2 space-y-2">
+                            {chapterLocations.map((item) => (
+                              <div key={`location-${item.name}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <Tag color="cyan" className="mr-0">地点</Tag>
+                                  <div className="font-medium text-slate-800">{item.name}</div>
+                                  {item.type ? (
+                                    <span className="text-xs text-slate-400">{item.type}</span>
+                                  ) : null}
+                                </div>
+                                {item.note ? (
+                                  <div className="mt-2 text-xs leading-5 text-slate-500">{item.note}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">本章暂无命中的地点设定</div>
+                        )}
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="伏笔与回收建议">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">本章新埋设</div>
+                        {introducedForeshadowItems.length ? (
+                          <div className="mt-2 space-y-2">
+                            {introducedForeshadowItems.map((item) => (
+                              <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="font-medium text-slate-800">{item.title}</div>
+                                  <Tag color="gold" className="mr-0">{item.status}</Tag>
+                                </div>
+                                <div className="mt-2 text-xs leading-5 text-slate-500">
+                                  {item.description || '暂无描述'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">本章暂无新伏笔</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">建议优先回收</div>
+                        {recommendedForeshadowItems.length ? (
+                          <div className="mt-2 space-y-2">
+                            {recommendedForeshadowItems.map((item) => (
+                              <div key={item.id} className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="font-medium text-slate-800">{item.title}</div>
+                                  <Tag color="orange" className="mr-0">
+                                    目标 {item.expected_payoff_chapter || '--'} 章
+                                  </Tag>
+                                </div>
+                                <div className="mt-2 text-xs leading-5 text-slate-600">
+                                  {item.description || '暂无描述'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-slate-300">当前没有紧迫的伏笔回收项</div>
+                        )}
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="一致性雷达">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">风险结论</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterConsistencyRisks.length
+                            ? chapterConsistencyRisks.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="orange" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无明显风险</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">检查实体</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterCheckedEntities.length
+                            ? chapterCheckedEntities.map((item) => (
+                              <Tag key={item} color="blue" className="mr-0 whitespace-normal break-words">{item}</Tag>
+                            ))
+                            : <span className="text-slate-300">暂无实体检查记录</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+
+                  <PanelCard title="修订闭环">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">质量问题</div>
+                        <div className="mt-2 space-y-2">
+                          {chapterQualityIssues.length ? chapterQualityIssues.map((item, index) => (
+                            <div key={`${item.code}-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Tag color={item.severity === 'high' ? 'red' : item.severity === 'medium' ? 'orange' : 'default'} className="mr-0">
+                                  {item.severity}
+                                </Tag>
+                                <div className="font-medium text-slate-800">{item.message}</div>
+                              </div>
+                              {item.suggestion ? (
+                                <div className="mt-2 text-xs leading-5 text-slate-500">{item.suggestion}</div>
+                              ) : null}
+                            </div>
+                          )) : <div className="text-slate-300">暂无结构化质量问题</div>}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">建议先改</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterRepairActions.length
+                            ? chapterRepairActions.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="red" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无修订动作</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <Empty description="请选择一个章节后查看章节资产" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </div>
+              ),
+            },
             {
               key: 'settings',
               label: '设定',
@@ -243,6 +832,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                               <div>
                                 <div className="text-xs text-slate-400">收尾钩子</div>
                                 <div className="mt-1">{focusCard.ending_hook}</div>
+                              </div>
+                            ) : null}
+                            {focusCard.must_fix?.length ? (
+                              <div>
+                                <div className="text-xs text-slate-400">优先修复</div>
+                                <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                                  {focusCard.must_fix.map((item) => (
+                                    <Tag key={item} color="red" className="mr-0 whitespace-normal break-words">{item}</Tag>
+                                  ))}
+                                </div>
                               </div>
                             ) : null}
                             {focusCard.must_payoff?.length ? (

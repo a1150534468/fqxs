@@ -91,6 +91,11 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
                   </div>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-1">
+                  {chapter.review_status && chapter.review_status !== 'pending' ? (
+                    <Tag color={chapter.review_status === 'approved' ? 'green' : 'orange'} className="mr-0 text-[11px]">
+                      {chapter.review_status === 'approved' ? '已审' : '待修'}
+                    </Tag>
+                  ) : null}
                   <Tag color={tag.color} className="mr-0 text-[11px]">
                     {tag.label}
                   </Tag>
@@ -114,7 +119,9 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
                     size="small"
                     type="primary"
                     ghost
+                    disabled={chapter.review_status !== 'approved'}
                     className="h-6 rounded-lg px-2 text-[11px]"
+                    title={chapter.review_status === 'approved' ? '发布当前章节' : '请先在右侧审阅区完成定稿'}
                     onClick={(e) => { e.stopPropagation(); onPublish(chapter.id); }}
                   >
                     发布

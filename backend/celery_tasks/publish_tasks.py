@@ -4,6 +4,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.chapters.models import Chapter
+from apps.chapters.services.workflow import MIN_MANUAL_MODIFICATION_RATE
 from apps.tasks.models import Task
 
 logger = logging.getLogger('celery_tasks')
@@ -22,11 +23,35 @@ def publish_chapter_async(self, chapter_id, task_record_id=None):
         )
 
     try:
-        chapter = Chapter.objects.get(id=chapter_id, is_deleted=False)
+        chapter = Chapter.objects.select_related('review_record').get(id=chapter_id, is_deleted=False)
+        review = getattr(chapter, 'review_record', None)
 
         # Check if chapter is in draft status
         if chapter.status != 'draft':
             error_msg = f'Chapter must be in draft status before publishing. Current status: {chapter.status}'
+            logger.error(error_msg)
+            if task_record_id:
+                Task.objects.filter(id=task_record_id).update(
+                    status='failed',
+                    error_message=error_msg,
+                    completed_at=timezone.now(),
+                )
+            return {'status': 'error', 'reason': error_msg}
+        if not review or review.status != 'approved':
+            error_msg = 'Chapter must be approved in review before publishing.'
+            logger.error(error_msg)
+            if task_record_id:
+                Task.objects.filter(id=task_record_id).update(
+                    status='failed',
+                    error_message=error_msg,
+                    completed_at=timezone.now(),
+                )
+            return {'status': 'error', 'reason': error_msg}
+        if (review.modification_rate or 0) < MIN_MANUAL_MODIFICATION_RATE:
+            error_msg = (
+                f'Chapter modification rate must be at least {MIN_MANUAL_MODIFICATION_RATE}% '
+                'before publishing.'
+            )
             logger.error(error_msg)
             if task_record_id:
                 Task.objects.filter(id=task_record_id).update(

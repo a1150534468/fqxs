@@ -2,14 +2,16 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { message, Button, Progress, Tag } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { publishChapter } from '../../api/chapters';
+import { publishChapter, saveChapterReview, updateChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
 import { ChapterSidebar } from './ChapterSidebar';
 import { WritingCenter } from './WritingCenter';
 import { SettingsPanel } from './SettingsPanel';
 import { formatNumber } from './constants';
 import type {
+  ChapterAssetSnapshot,
   Chapter,
+  ChapterReviewRecord,
   ChapterSummaryRecord,
   ForeshadowItemRecord,
   KnowledgeFactRecord,
@@ -37,10 +39,12 @@ interface WorkspacePageProps {
   };
   settings: NovelSettingRecord[];
   chapterSummaries: ChapterSummaryRecord[];
+  chapterReviews: ChapterReviewRecord[];
   storylines: StorylineRecord[];
   plotArcPoints: PlotArcPointRecord[];
   knowledgeFacts: KnowledgeFactRecord[];
   foreshadowItems: ForeshadowItemRecord[];
+  chapterAssetIndex?: Record<string, ChapterAssetSnapshot>;
   styleProfiles: StyleProfileRecord[];
   knowledgeGraph?: KnowledgeGraphPayload;
   workbenchHighlights?: WorkbenchHighlights;
@@ -56,10 +60,12 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   aggregatedStats,
   settings,
   chapterSummaries,
+  chapterReviews,
   storylines,
   plotArcPoints,
   knowledgeFacts,
   foreshadowItems,
+  chapterAssetIndex,
   styleProfiles,
   knowledgeGraph,
   workbenchHighlights,
@@ -68,10 +74,16 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const { state: streamState, start, stop } = useChapterStream(selectedNovel?.id ?? null);
   const navigate = useNavigate();
   const selectedChapter = selectedChapters.find((chapter) => chapter.id === selectedChapterId) ?? null;
+  const selectedChapterIndex = selectedChapters.findIndex((chapter) => chapter.id === selectedChapterId);
   const nextChapterNumber = (selectedNovel?.current_chapter ?? 0) + 1;
 
   const handleStartContinuous = (targetChapter: number) => {
     if (!selectedNovel) { message.warning('请先选择一本书'); return; }
+    const workflowGate = workbenchHighlights?.workflow_gate;
+    if (workflowGate && !workflowGate.allowed) {
+      message.warning(workflowGate.summary || '当前工作流闸门未通过，暂时不能持续迭代');
+      return;
+    }
     if (targetChapter < nextChapterNumber) {
       message.warning(`目标章节不能小于第 ${nextChapterNumber} 章`);
       return;
@@ -139,6 +151,53 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     }
   };
 
+  const handleSaveChapterContent = async (
+    chapterId: number,
+    content: string,
+    options?: { silent?: boolean },
+  ) => {
+    try {
+      await updateChapter(chapterId, {
+        final_content: content,
+        publish_status: 'draft',
+      });
+      if (!options?.silent) {
+        message.success('正文已保存');
+      }
+      onChapterSaved?.();
+    } catch {
+      if (!options?.silent) {
+        message.error('保存正文失败');
+      }
+      throw new Error('save chapter content failed');
+    }
+  };
+
+  const handleSaveChapterReview = async (
+    chapterId: number,
+    payload: {
+      status?: 'pending' | 'approved' | 'revise';
+      review_notes?: string;
+      generate_ai?: boolean;
+      apply_ai_to_notes?: boolean;
+    },
+    options?: { silent?: boolean },
+  ) => {
+    try {
+      const response = await saveChapterReview(chapterId, payload);
+      if (!options?.silent) {
+        message.success(payload.generate_ai ? 'AI 审读建议已生成' : '审阅记录已保存');
+      }
+      onChapterSaved?.();
+      return response;
+    } catch {
+      if (!options?.silent) {
+        message.error(payload.generate_ai ? '生成 AI 审读建议失败' : '保存审阅记录失败');
+      }
+      throw new Error('save chapter review failed');
+    }
+  };
+
   // Refresh chapter list whenever a chapter is saved during streaming
   const prevSavedEvent = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -199,6 +258,11 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                 {workbenchHighlights?.active_storyline?.name && (
                   <Tag color="cyan" className="mr-0">
                     {workbenchHighlights.active_storyline.name}
+                  </Tag>
+                )}
+                {workbenchHighlights?.workflow_gate?.status === 'blocked' && (
+                  <Tag color="red" className="mr-0">
+                    流程待处理
                   </Tag>
                 )}
               </div>
@@ -280,10 +344,23 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
               selectedChapter={selectedChapter}
               streamState={streamState}
               highlights={workbenchHighlights}
+              canPrevChapter={selectedChapterIndex > 0}
+              canNextChapter={selectedChapterIndex >= 0 && selectedChapterIndex < selectedChapters.length - 1}
+              onPrevChapter={() => {
+                if (selectedChapterIndex > 0) {
+                  onSelectChapter(selectedChapters[selectedChapterIndex - 1].id);
+                }
+              }}
+              onNextChapter={() => {
+                if (selectedChapterIndex >= 0 && selectedChapterIndex < selectedChapters.length - 1) {
+                  onSelectChapter(selectedChapters[selectedChapterIndex + 1].id);
+                }
+              }}
               onStartContinuous={handleStartContinuous}
               onGenerateNext={handleGenerateNext}
               onContinueCurrent={handleContinueCurrent}
               onRegenerateCurrent={handleRegenerateCurrent}
+              onSaveChapterContent={handleSaveChapterContent}
               onStop={handleStop}
             />
           </main>
@@ -293,11 +370,14 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
               settings={settings}
               chapter={selectedChapter}
               chapterSummaries={chapterSummaries}
+              chapterReviews={chapterReviews}
               storylines={storylines}
               plotArcPoints={plotArcPoints}
               knowledgeFacts={knowledgeFacts}
               foreshadowItems={foreshadowItems}
+              chapterAssetIndex={chapterAssetIndex}
               styleProfiles={styleProfiles}
+              onSaveChapterReview={handleSaveChapterReview}
               workbenchHighlights={workbenchHighlights}
               knowledgeGraph={knowledgeGraph}
             />

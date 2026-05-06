@@ -99,6 +99,11 @@ export const updateDraft = async (id: number | string, data: any) => {
   return response.data;
 };
 
+export const updateDraftTitle = async (id: number | string, title: string) => {
+  const response = await request.patch(`/drafts/${id}/`, { title });
+  return response.data;
+};
+
 export const deleteDraft = async (id: number | string) => {
   const response = await request.delete(`/drafts/${id}/`);
   return response.data;

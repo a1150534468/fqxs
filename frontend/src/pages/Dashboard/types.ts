@@ -21,6 +21,8 @@ export interface Chapter {
   title?: string;
   word_count?: number;
   status?: string;
+  review_status?: 'pending' | 'approved' | 'revise';
+  has_ai_review?: boolean;
   raw_content?: string;
   final_content?: string;
   generation_meta?: Record<string, any>;
@@ -28,6 +30,9 @@ export interface Chapter {
   summary?: string;
   open_threads?: string[];
   consistency_status?: Record<string, any>;
+  generated_at?: string;
+  reviewed_at?: string;
+  published_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -130,7 +135,32 @@ export interface FocusCardRecord {
   ending_hook: string;
   must_keep: string[];
   must_payoff: string[];
+  must_fix: string[];
   avoid: string[];
+}
+
+export interface WorkflowGateReasonRecord {
+  code: string;
+  level: 'info' | 'warning' | 'critical';
+  title: string;
+  detail: string;
+}
+
+export interface WorkflowGateRecord {
+  allowed: boolean;
+  status: 'ok' | 'warning' | 'blocked';
+  summary: string;
+  checked_chapter?: {
+    id: number;
+    chapter_number: number;
+    title: string;
+    status: string;
+    review_status: string;
+    modification_rate?: number | null;
+  } | null;
+  blocking_reasons: WorkflowGateReasonRecord[];
+  warnings: WorkflowGateReasonRecord[];
+  minimum_modification_rate: number;
 }
 
 export interface WorkbenchHighlights {
@@ -148,6 +178,58 @@ export interface WorkbenchHighlights {
     style_risk: string;
     style_tone: string;
   };
+  workflow_gate?: WorkflowGateRecord;
+}
+
+export interface ChapterEntityElement {
+  name: string;
+  role?: string;
+  type?: string;
+  note?: string;
+}
+
+export interface ChapterEventCard {
+  label: string;
+  event_type: string;
+  tension_level: 'low' | 'medium' | 'high';
+  actors: string[];
+  locations: string[];
+  evidence: string;
+}
+
+export interface ChapterQualityIssue {
+  code: string;
+  severity: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface ChapterReviewRecord {
+  id: number;
+  project: number;
+  chapter: number;
+  chapter_number: number;
+  reviewer?: number | null;
+  reviewer_username?: string;
+  status: 'pending' | 'approved' | 'revise';
+  review_notes: string;
+  ai_review: string;
+  ai_action_items: string[];
+  modification_rate: number;
+  ai_generated_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChapterAssetSnapshot {
+  knowledge_facts: KnowledgeFactRecord[];
+  introduced_foreshadow_items: ForeshadowItemRecord[];
+  recommended_foreshadow_items: ForeshadowItemRecord[];
+  character_elements: ChapterEntityElement[];
+  location_elements: ChapterEntityElement[];
+  event_cards: ChapterEventCard[];
+  quality_issues: ChapterQualityIssue[];
+  repair_actions: string[];
 }
 
 export interface WorkbenchStats {
@@ -164,10 +246,12 @@ export interface WorkbenchContext {
   chapters: Chapter[];
   settings: NovelSettingRecord[];
   chapter_summaries: ChapterSummaryRecord[];
+  chapter_reviews: ChapterReviewRecord[];
   storylines: StorylineRecord[];
   plot_arc_points: PlotArcPointRecord[];
   knowledge_facts: KnowledgeFactRecord[];
   foreshadow_items: ForeshadowItemRecord[];
+  chapter_asset_index?: Record<string, ChapterAssetSnapshot>;
   style_profiles: StyleProfileRecord[];
   workbench_highlights?: WorkbenchHighlights;
   knowledge_graph: KnowledgeGraphPayload;

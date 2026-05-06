@@ -8,6 +8,7 @@ import {
   getDraftSettings,
   saveDraftStep,
   completeDraft,
+  updateDraftTitle,
 } from '../../api/novels';
 import { useSettingStream } from '../../hooks/useSettingStream';
 import type { NovelSettingRecord } from './types';
@@ -32,6 +33,7 @@ const pickArray = (response: any): any[] => {
 const FINAL_STEP_INDEX = wizardSteps.length - 1; // 6 (进入工作台)
 
 const stepDescriptions = [
+  '为你的小说选择一个吸引人的书名。',
   '搭建故事世界的 8 维度：时间、地点、社会、文化、科技、力量、历史、自然法则。',
   '定义主要角色、性格、动机与关系网络。',
   '规划关键地点、区域连接与空间布局。',
@@ -49,6 +51,7 @@ export const NewBookWizard = ({
   onFinished,
 }: NewBookWizardProps) => {
   const [step, setStep] = useState(0);
+  const [bookTitle, setBookTitle] = useState('');
   const [settings, setSettings] = useState<Record<string, NovelSettingRecord>>({});
   const [stepContent, setStepContent] = useState<Record<string, string>>({});
   const [stepTitles, setStepTitles] = useState<Record<string, string>>({});
@@ -97,6 +100,10 @@ export const NewBookWizard = ({
     if (!open || !draftId) return;
     let cancelled = false;
     setLoadingExisting(true);
+    // Initialize book title from pendingTitle
+    if (pendingTitle) {
+      setBookTitle(pendingTitle);
+    }
     getDraftSettings(draftId)
       .then((res) => {
         if (cancelled) return;
@@ -137,6 +144,7 @@ export const NewBookWizard = ({
   useEffect(() => {
     if (!open) {
       setStep(0);
+      setBookTitle('');
       setSettings({});
       setStepContent({});
       setStepTitles({});
@@ -170,9 +178,10 @@ export const NewBookWizard = ({
   const buildContextString = useCallback(
     (forStep: number) => {
       const prior: string[] = [];
-      if (pendingTitle) prior.push(`书名灵感:${pendingTitle}`);
+      if (bookTitle) prior.push(`书名:${bookTitle}`);
       for (let i = 0; i < forStep; i++) {
         const type = WIZARD_STEP_TYPES[i];
+        if (type === 'book_title') continue; // Skip book_title step
         const content = stepContent[type];
         if (content) {
           prior.push(`【${wizardSteps[i]}】\n${content}`);
@@ -180,20 +189,20 @@ export const NewBookWizard = ({
       }
       return prior.join('\n\n');
     },
-    [pendingTitle, stepContent],
+    [bookTitle, stepContent],
   );
 
   const runGenerate = useCallback(
     async (targetStep: number) => {
       const type = WIZARD_STEP_TYPES[targetStep];
       const label = wizardSteps[targetStep];
-      if (!type) return;
+      if (!type || type === 'book_title') return; // Skip book_title generation
       try {
         const res = await generate({
           setting_type: type,
-          book_title: pendingTitle || '新书',
+          book_title: bookTitle || '新书',
           genre: '',
-          context: buildContextString(targetStep) || pendingTitle || label,
+          context: buildContextString(targetStep) || bookTitle || label,
           prior_settings: buildPriorSettings(targetStep),
         });
         if (!res) {
@@ -243,6 +252,18 @@ export const NewBookWizard = ({
 
   const persistCurrent = async (): Promise<boolean> => {
     if (!draftId || !currentType) return true;
+
+    // Handle book_title step separately
+    if (currentType === 'book_title') {
+      if (!bookTitle.trim()) {
+        message.warning('请输入书名');
+        return false;
+      }
+      // Book title is saved in the draft itself, not as a setting
+      // We'll update it when completing the draft
+      return true;
+    }
+
     const contentValue = (stepContent[currentType] ?? '').trim();
     if (!contentValue) {
       message.warning('请先生成或填写内容');
@@ -277,6 +298,17 @@ export const NewBookWizard = ({
   const handleNext = async () => {
     const ok = await persistCurrent();
     if (!ok) return;
+
+    // If we're leaving the book_title step, update the draft title
+    if (currentType === 'book_title' && draftId && bookTitle.trim()) {
+      try {
+        await updateDraftTitle(draftId, bookTitle.trim());
+      } catch (err: any) {
+        console.error('Failed to update draft title:', err);
+        message.warning('书名保存失败，但可以继续');
+      }
+    }
+
     setStep((s) => Math.min(s + 1, FINAL_STEP_INDEX));
   };
 
@@ -301,28 +333,42 @@ export const NewBookWizard = ({
 
   const savedKeys = useMemo(() => new Set(Object.keys(settings)), [settings]);
   const completionRate = useMemo(() => {
-    if (WIZARD_STEP_TYPES.length === 0) return 0;
-    return Math.round((savedKeys.size / WIZARD_STEP_TYPES.length) * 100);
-  }, [savedKeys]);
+    const totalSteps = WIZARD_STEP_TYPES.filter(t => t !== 'book_title').length;
+    if (totalSteps === 0) return 0;
+    const completedSteps = savedKeys.size + (bookTitle.trim() ? 1 : 0);
+    return Math.round((completedSteps / (totalSteps + 1)) * 100);
+  }, [savedKeys, bookTitle]);
   const maxUnlockedStep = useMemo(() => {
     for (let index = 0; index < WIZARD_STEP_TYPES.length; index += 1) {
-      if (!savedKeys.has(WIZARD_STEP_TYPES[index])) {
-        return index;
+      const type = WIZARD_STEP_TYPES[index];
+      if (type === 'book_title') {
+        if (!bookTitle.trim()) return index;
+      } else {
+        if (!savedKeys.has(type)) return index;
       }
     }
     return FINAL_STEP_INDEX;
-  }, [savedKeys]);
+  }, [savedKeys, bookTitle]);
 
   const previewMarkdown = isStreaming ? streamingText : currentContent;
-  const canProceed = !isStreaming && (!!currentContent || isFinalStep);
+  const canProceed = currentType === 'book_title'
+    ? !!bookTitle.trim()
+    : !isStreaming && (!!currentContent || isFinalStep);
 
   const handleExportWizard = async () => {
-    const text = WIZARD_STEP_TYPES.map((type, idx) => {
+    const parts: string[] = [];
+    if (bookTitle) {
+      parts.push(`书名: ${bookTitle}`);
+    }
+    const settingTexts = WIZARD_STEP_TYPES.filter(t => t !== 'book_title').map((type, idx) => {
+      const actualIdx = WIZARD_STEP_TYPES.indexOf(type);
       const rec = settings[type];
       const fallback = stepContent[type] || '';
-      const title = rec?.title || stepTitles[type] || wizardSteps[idx];
-      return `${idx + 1}. ${wizardSteps[idx]} · ${title}\n${rec?.content || fallback}`;
-    }).join('\n\n');
+      const title = rec?.title || stepTitles[type] || wizardSteps[actualIdx];
+      return `${idx + 1}. ${wizardSteps[actualIdx]} · ${title}\n${rec?.content || fallback}`;
+    });
+    parts.push(...settingTexts);
+    const text = parts.join('\n\n');
     if (!text.trim()) {
       message.warning('暂无可导出的内容');
       return;
@@ -605,7 +651,53 @@ export const NewBookWizard = ({
     );
   };
 
+  const renderBookTitleInput = () => {
+    return (
+      <div className="space-y-4">
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
+          <h3 className="text-lg font-semibold text-indigo-900 mb-2">为你的小说起个好名字</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            一个好的书名能够吸引读者的注意力，传达故事的核心主题。
+          </p>
+          <Input
+            size="large"
+            placeholder="请输入书名，例如：修仙从养猪开始"
+            value={bookTitle}
+            onChange={(e) => setBookTitle(e.target.value)}
+            className="text-base"
+            maxLength={50}
+            showCount
+          />
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-200">
+          <p className="text-xs font-medium text-gray-600 mb-2">💡 书名建议</p>
+          <ul className="text-xs text-gray-500 space-y-1">
+            <li>• 简洁有力，易于记忆（建议 2-8 个字）</li>
+            <li>• 体现故事核心元素或主题</li>
+            <li>• 引发读者好奇心和想象力</li>
+            <li>• 避免过于常见或雷同的名字</li>
+          </ul>
+        </div>
+        {pendingTitle && pendingTitle !== bookTitle && (
+          <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
+            <p className="text-xs font-medium text-amber-800 mb-1">原始灵感书名</p>
+            <p className="text-sm text-amber-700">{pendingTitle}</p>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => setBookTitle(pendingTitle)}
+              className="p-0 h-auto text-xs mt-1"
+            >
+              使用原始书名
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderStructuredEditor = () => {
+    if (currentType === 'book_title') return renderBookTitleInput();
     if (currentType === 'worldview') return renderWorldviewCards();
     if (currentType === 'map') return renderMapGraph();
     if (currentType === 'plot_arc') return renderPlotArcSteps();
@@ -645,7 +737,7 @@ export const NewBookWizard = ({
       <div className="p-4 lg:p-6 space-y-4 bg-slate-50">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold text-slate-800">新书设置向导</h2>
-          {pendingTitle && <Tag color="purple">{pendingTitle}</Tag>}
+          {bookTitle && <Tag color="purple">{bookTitle}</Tag>}
           <Tag color="blue">
             第 {step + 1} / {wizardSteps.length} 步 · {currentLabel}
           </Tag>
@@ -723,7 +815,7 @@ export const NewBookWizard = ({
                   size="small"
                   icon={<ThunderboltOutlined />}
                   onClick={handleManualGenerate}
-                  disabled={isStreaming || isFinalStep}
+                  disabled={isStreaming || isFinalStep || currentType === 'book_title'}
                 >
                   重新生成当前步
                 </Button>
@@ -740,23 +832,32 @@ export const NewBookWizard = ({
                 <div className="flex flex-col h-full">
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-sm text-gray-600">
-                      以下为《{pendingTitle || '新书'}》的完整设定，请确认后点击"完成并进入工作台"。
+                      以下为《{bookTitle || '新书'}》的完整设定，请确认后点击"完成并进入工作台"。
                     </p>
                     <Button onClick={handleExportWizard} size="small">
                       导出设定
                     </Button>
                   </div>
                   <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-                    {WIZARD_STEP_TYPES.map((type, idx) => {
+                    {bookTitle && (
+                      <div className="border border-indigo-200 rounded-2xl p-4 bg-gradient-to-br from-indigo-50 to-purple-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-indigo-900">书名</span>
+                        </div>
+                        <p className="text-lg font-bold text-indigo-700">{bookTitle}</p>
+                      </div>
+                    )}
+                    {WIZARD_STEP_TYPES.filter(t => t !== 'book_title').map((type, idx) => {
+                      const actualIdx = WIZARD_STEP_TYPES.indexOf(type);
                       const rec = settings[type];
                       const pending = stepContent[type];
-                      const displayTitle = rec?.title || stepTitles[type] || wizardSteps[idx];
+                      const displayTitle = rec?.title || stepTitles[type] || wizardSteps[actualIdx];
                       const displayContent = rec?.content || pending || '';
                       return (
                         <div key={type} className="border border-slate-200 rounded-2xl p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-semibold text-slate-800">
-                              {idx + 1}. {wizardSteps[idx]} · {displayTitle}
+                              {idx + 1}. {wizardSteps[actualIdx]} · {displayTitle}
                             </span>
                             {!rec && <Tag color="orange">未保存</Tag>}
                           </div>
@@ -774,7 +875,18 @@ export const NewBookWizard = ({
                 </div>
               ) : (
                 <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden min-h-0">
-                  <div className="flex-1 basis-0 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                  {currentType === 'book_title' ? (
+                    // Book title step: full width, no split view
+                    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-gray-700">书名设置</p>
+                      </div>
+                      <div className="flex-1 overflow-auto">{renderBookTitleInput()}</div>
+                    </div>
+                  ) : (
+                    // Other steps: split view with AI output and structured editor
+                    <>
+                      <div className="flex-1 basis-0 flex flex-col min-w-0 min-h-0 overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="text-sm font-medium text-gray-700">AI 实时输出</p>
@@ -850,6 +962,8 @@ export const NewBookWizard = ({
                     />
                     <div className="flex-1 overflow-auto">{renderStructuredEditor()}</div>
                   </div>
+                  </>
+                  )}
                 </div>
               )}
             </div>

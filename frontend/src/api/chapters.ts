@@ -37,3 +37,13 @@ export const publishChapter = async (id: string | number) => {
   const response = await request.post(`/chapters/${id}/publish/`);
   return response.data;
 };
+
+export const getChapterReview = async (id: string | number) => {
+  const response = await request.get(`/chapters/${id}/review/`);
+  return response.data;
+};
+
+export const saveChapterReview = async (id: string | number, data: any) => {
+  const response = await request.post(`/chapters/${id}/review/`, data);
+  return response.data;
+};

@@ -237,10 +237,12 @@ const Dashboard = () => {
               aggregatedStats={aggregatedStats}
               settings={selectedWorkbench?.settings || []}
               chapterSummaries={selectedWorkbench?.chapter_summaries || []}
+              chapterReviews={selectedWorkbench?.chapter_reviews || []}
               storylines={selectedWorkbench?.storylines || []}
               plotArcPoints={selectedWorkbench?.plot_arc_points || []}
               knowledgeFacts={selectedWorkbench?.knowledge_facts || []}
               foreshadowItems={selectedWorkbench?.foreshadow_items || []}
+              chapterAssetIndex={selectedWorkbench?.chapter_asset_index}
               styleProfiles={selectedWorkbench?.style_profiles || []}
               workbenchHighlights={selectedWorkbench?.workbench_highlights}
               knowledgeGraph={selectedWorkbench?.knowledge_graph}

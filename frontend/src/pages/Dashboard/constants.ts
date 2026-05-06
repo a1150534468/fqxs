@@ -1,4 +1,5 @@
 export const wizardSteps = [
+  '书名',
   '世界观',
   '人物',
   '地图',
@@ -9,6 +10,7 @@ export const wizardSteps = [
 ];
 
 export const WIZARD_STEP_TYPES = [
+  'book_title',
   'worldview',
   'characters',
   'map',

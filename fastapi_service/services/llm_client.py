@@ -413,12 +413,13 @@ class LLMClient:
 
     async def continue_content(
         self, current_content: str, continue_length: int,
+        context_payload: dict | None = None,
         user_token: str | None = None,
     ):
         if await self._should_use_mock(user_token):
-            return await self._mock_continue_content(current_content, continue_length)
+            return await self._mock_continue_content(current_content, continue_length, context_payload)
         return await self._real_continue_content(
-            current_content, continue_length, user_token=user_token,
+            current_content, continue_length, context_payload=context_payload, user_token=user_token,
         )
 
     async def generate_inspiration(
@@ -610,11 +611,13 @@ class LLMClient:
 
     async def _real_continue_content(
         self, current_content: str, continue_length: int,
+        context_payload: dict | None = None,
         user_token: str | None = None,
     ):
-        user_msg = (
-            f"请续写以下故事内容，目标长度约 {continue_length} 个汉字：\n\n"
-            f"{current_content[-1200:] if len(current_content) > 1200 else current_content}"
+        user_msg = PromptBuilder.build_continue_prompt(
+            current_content=current_content[-3000:] if len(current_content) > 3000 else current_content,
+            continue_length=continue_length,
+            context_payload=context_payload,
         )
         content = await self._call_llm(self.SYSTEM_CONTINUE, user_msg, user_token=user_token)
         return content, self._count_words(content)
@@ -929,6 +932,8 @@ class LLMClient:
         focus_card = payload.get('focus_card') or {}
         micro_beats = payload.get('micro_beats') or []
         must_payoff = (focus_card.get('must_payoff') or [])[:2]
+        must_fix = (focus_card.get('must_fix') or [])[:3]
+        target_chapter_context = payload.get('target_chapter_context') or {}
 
         paragraphs = [
             f"第{chapter_number}章《{chapter_title}》",
@@ -941,6 +946,10 @@ class LLMClient:
             paragraphs.append(f"角色此刻面临的核心冲突是：{focus_card['conflict']}")
         if must_payoff:
             paragraphs.append(f"本章必须触碰的旧线索包括：{'、'.join(must_payoff)}。")
+        if must_fix:
+            paragraphs.append(f"本章优先修复的问题包括：{'、'.join(must_fix)}。")
+        if target_chapter_context.get('summary'):
+            paragraphs.append(f"当前章节底稿摘要：{target_chapter_context.get('summary')}")
 
         for beat in micro_beats[:4]:
             paragraphs.append(
@@ -957,13 +966,29 @@ class LLMClient:
         content = "\n\n".join(paragraphs)
         return content, self._count_words(content)
 
-    async def _mock_continue_content(self, current_content: str, continue_length: int):
+    async def _mock_continue_content(
+        self,
+        current_content: str,
+        continue_length: int,
+        context_payload: dict | None = None,
+    ):
         await asyncio.sleep(0.05)
 
         target_length = self._clamp(continue_length, lower=100, upper=5000)
         seed = current_content.strip()[-48:] if current_content.strip() else "故事尚未开始"
+        payload = context_payload or {}
+        focus_card = payload.get('focus_card') or {}
+        target_chapter_context = payload.get('target_chapter_context') or {}
 
         paragraphs = [f"承接上文：{seed}"]
+        if focus_card.get('mission'):
+            paragraphs.append(f"续写目标：{focus_card.get('mission')}")
+        if focus_card.get('must_fix'):
+            paragraphs.append(f"本次续写优先修复：{'、'.join((focus_card.get('must_fix') or [])[:3])}。")
+        review = target_chapter_context.get('review') or {}
+        if review.get('review_notes') or review.get('ai_review'):
+            paragraphs.append(f"返修提醒：{review.get('review_notes') or review.get('ai_review')}")
+
         line_iter = itertools.cycle(zip(self._opening_lines, self._turning_lines, self._closing_lines))
         while self._count_words("\n".join(paragraphs)) < target_length:
             opening, turning, closing = next(line_iter)

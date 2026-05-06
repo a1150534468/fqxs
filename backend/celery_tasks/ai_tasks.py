@@ -9,6 +9,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.chapters.models import Chapter
+from apps.chapters.services.review import sync_chapter_review
+from apps.chapters.services.workflow import (
+    evaluate_generation_workflow_gate,
+    refresh_chapter_workflow_assets,
+)
 from apps.inspirations.models import Inspiration
 from apps.novels.models import NovelProject
 from apps.tasks.models import Task
@@ -70,6 +75,12 @@ def generate_chapter_async(self, project_id, chapter_number, chapter_title, task
                 'generated_at': timezone.now(),
                 'is_deleted': False,
             },
+        )
+        refresh_chapter_workflow_assets(project, chapter, content)
+        sync_chapter_review(
+            chapter,
+            refresh_ai=True,
+            reset_status=True,
         )
 
         result = {
@@ -286,8 +297,17 @@ def start_novel_project_from_inspiration(
                 raw_content=chapter_data.get('content', ''),
                 final_content=chapter_data.get('content', ''),
                 word_count=chapter_data.get('word_count', 0),
+                summary='',
+                open_threads=[],
+                consistency_status={},
                 status='draft',
                 generated_at=timezone.now(),
+            )
+            refresh_chapter_workflow_assets(project, chapter, chapter.final_content or '')
+            sync_chapter_review(
+                chapter,
+                refresh_ai=True,
+                reset_status=True,
             )
 
             # Update project
@@ -356,6 +376,25 @@ def generate_next_chapter_for_project(project_id, force=False):
         if project.current_chapter >= project.target_chapters:
             logger.info(f"Project {project_id} has reached target chapters")
             return {'status': 'skipped', 'reason': 'target_reached'}
+
+        if not force:
+            workflow_gate = evaluate_generation_workflow_gate(
+                project,
+                project.current_chapter + 1,
+                block_on_pending=True,
+                enforce_modification_rate=True,
+            )
+            if not workflow_gate['allowed']:
+                logger.info(
+                    "Workflow gate blocked auto-generation for project %s: %s",
+                    project_id,
+                    workflow_gate['summary'],
+                )
+                return {
+                    'status': 'skipped',
+                    'reason': 'workflow_blocked',
+                    'workflow_gate': workflow_gate,
+                }
 
         next_chapter_number = project.current_chapter + 1
         chapter_title = f"第{next_chapter_number}章"

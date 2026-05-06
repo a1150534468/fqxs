@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -92,3 +93,59 @@ class ChapterSummary(models.Model):
 
     def __str__(self):
         return f'{self.project.title} - 第{self.chapter.chapter_number}章摘要'
+
+
+class ChapterReview(models.Model):
+    """Manual and AI-assisted review record for a chapter."""
+
+    STATUS_CHOICES = [
+        ('pending', '待阅'),
+        ('approved', '已定稿'),
+        ('revise', '需修订'),
+    ]
+
+    project = models.ForeignKey(
+        'novels.NovelProject',
+        on_delete=models.CASCADE,
+        related_name='chapter_reviews',
+        verbose_name='所属项目',
+    )
+    chapter = models.OneToOneField(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name='review_record',
+        verbose_name='所属章节',
+    )
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='chapter_reviews',
+        verbose_name='审阅人',
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name='审阅状态',
+    )
+    review_notes = models.TextField(blank=True, verbose_name='审阅意见')
+    ai_review = models.TextField(blank=True, verbose_name='AI 审读建议')
+    ai_action_items = models.JSONField(default=list, blank=True, verbose_name='AI 审读动作项')
+    modification_rate = models.IntegerField(default=0, verbose_name='预估修改率')
+    ai_generated_at = models.DateTimeField(null=True, blank=True, verbose_name='AI 建议生成时间')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'chapter_review'
+        verbose_name = '章节审阅'
+        verbose_name_plural = '章节审阅'
+        ordering = ['chapter__chapter_number']
+        indexes = [
+            models.Index(fields=['project', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.project.title} - 第{self.chapter.chapter_number}章审阅'

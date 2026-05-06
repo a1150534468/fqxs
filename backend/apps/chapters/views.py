@@ -12,10 +12,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.chapters.models import Chapter, ChapterSummary
-from apps.chapters.serializers import ChapterSerializer
-from apps.chapters.services.analysis import analyze_chapter_assets
-from apps.chapters.services.post_processing import build_chapter_summary_payload
+from apps.chapters.models import Chapter, ChapterReview, ChapterSummary
+from apps.chapters.serializers import ChapterReviewSerializer, ChapterSerializer
+from apps.chapters.services.review import build_ai_review_payload, sync_chapter_review
+from apps.chapters.services.workflow import (
+    MIN_MANUAL_MODIFICATION_RATE,
+    refresh_chapter_workflow_assets,
+)
 from apps.novels.models import NovelProject
 from apps.tasks.models import Task
 from celery_tasks.ai_tasks import generate_chapter_async
@@ -63,7 +66,12 @@ class ChapterViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Return filtered chapters owned by the current authenticated user."""
         queryset = (
-            Chapter.objects.select_related('project', 'project__user', 'llm_provider')
+            Chapter.objects.select_related(
+                'project',
+                'project__user',
+                'llm_provider',
+                'review_record',
+            )
             .filter(
                 project__user=self.request.user,
                 project__is_deleted=False,
@@ -129,16 +137,68 @@ class ChapterViewSet(viewsets.ModelViewSet):
         instance.is_deleted = True
         instance.save(update_fields=['is_deleted', 'updated_at'])
 
+    def perform_create(self, serializer):
+        """Create chapter and initialize review workflow metadata."""
+        chapter = serializer.save()
+        if chapter.raw_content or chapter.final_content:
+            content = chapter.final_content or chapter.raw_content or ''
+            refresh_chapter_workflow_assets(chapter.project, chapter, content)
+            review = sync_chapter_review(
+                chapter,
+                reviewer=self.request.user,
+                refresh_ai=True,
+                reset_status=True,
+            )
+            chapter.review_record = review
+
+    def perform_update(self, serializer):
+        """Keep review workflow in sync when chapter content changes."""
+        instance = serializer.instance
+        previous_raw = instance.raw_content
+        previous_final = instance.final_content
+        chapter = serializer.save()
+
+        content_changed = (
+            previous_raw != chapter.raw_content
+            or previous_final != chapter.final_content
+        )
+        if content_changed:
+            content = chapter.final_content or chapter.raw_content or ''
+            refresh_chapter_workflow_assets(chapter.project, chapter, content)
+            review = sync_chapter_review(
+                chapter,
+                reviewer=self.request.user,
+                refresh_ai=True,
+                reset_status=True,
+            )
+            chapter.review_record = review
+
     @action(detail=True, methods=['post'], url_path='publish')
     def publish(self, request, pk=None):
         """Publish a chapter to Tomato Novel platform."""
         chapter = self.get_object()
+        review = getattr(chapter, 'review_record', None)
 
         # Check if chapter is in draft status (ready to publish)
         if chapter.status != 'draft':
             return Response(
                 {'error': 'Chapter must be in draft status before publishing. Current status: ' + chapter.status},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        if not review or review.status != 'approved':
+            return Response(
+                {'error': 'Chapter must be approved in review before publishing.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if (review.modification_rate or 0) < MIN_MANUAL_MODIFICATION_RATE:
+            return Response(
+                {
+                    'error': (
+                        f'Chapter modification rate must be at least {MIN_MANUAL_MODIFICATION_RATE}% '
+                        'before publishing.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Create task record
@@ -170,6 +230,80 @@ class ChapterViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(detail=True, methods=['get', 'post'], url_path='review')
+    def review(self, request, pk=None):
+        """Read or upsert the review record for a chapter."""
+        chapter = self.get_object()
+        review, _created = ChapterReview.objects.get_or_create(
+            project=chapter.project,
+            chapter=chapter,
+            defaults={'reviewer': request.user},
+        )
+
+        if request.method.lower() == 'get':
+            return Response(ChapterReviewSerializer(review).data)
+
+        class ChapterReviewRequestSerializer(serializers.Serializer):
+            status = serializers.ChoiceField(
+                choices=['pending', 'approved', 'revise'],
+                required=False,
+            )
+            review_notes = serializers.CharField(required=False, allow_blank=True)
+            generate_ai = serializers.BooleanField(required=False, default=False)
+            apply_ai_to_notes = serializers.BooleanField(required=False, default=False)
+
+        serializer = ChapterReviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        review.reviewer = request.user
+        should_update_chapter_reviewed_at = False
+
+        if serializer.validated_data.get('generate_ai'):
+            ai_payload = build_ai_review_payload(chapter)
+            review.ai_review = ai_payload['ai_review']
+            review.ai_action_items = ai_payload['ai_action_items']
+            review.modification_rate = ai_payload['modification_rate']
+            review.ai_generated_at = timezone.now()
+
+        if 'review_notes' in serializer.validated_data:
+            review.review_notes = serializer.validated_data['review_notes']
+            should_update_chapter_reviewed_at = True
+
+        if serializer.validated_data.get('apply_ai_to_notes') and review.ai_review:
+            review.review_notes = review.ai_review
+            should_update_chapter_reviewed_at = True
+
+        if 'status' in serializer.validated_data:
+            review.status = serializer.validated_data['status']
+            should_update_chapter_reviewed_at = review.status in ('approved', 'revise')
+
+        if not review.modification_rate:
+            review.modification_rate = build_ai_review_payload(chapter)['modification_rate']
+
+        requested_status = serializer.validated_data.get('status')
+        if requested_status == 'approved' and review.modification_rate < MIN_MANUAL_MODIFICATION_RATE:
+            return Response(
+                {
+                    'error': (
+                        f'人工改稿幅度低于 {MIN_MANUAL_MODIFICATION_RATE}% ，'
+                        '当前章节不能标记为已定稿。'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        review.save()
+
+        if should_update_chapter_reviewed_at:
+            chapter.reviewed_at = timezone.now()
+            chapter.save(update_fields=['reviewed_at', 'updated_at'])
+        elif review.status == 'pending' and not review.review_notes.strip():
+            if chapter.reviewed_at is not None:
+                chapter.reviewed_at = None
+                chapter.save(update_fields=['reviewed_at', 'updated_at'])
+
+        return Response(ChapterReviewSerializer(review).data)
 
 
 class ChapterGenerateAsyncRequestSerializer(serializers.Serializer):
@@ -263,8 +397,6 @@ class GenerateFromWSView(APIView):
         )
         generation_meta = serializer.validated_data.get('generation_meta') or {}
         context_snapshot = serializer.validated_data.get('context_snapshot') or {}
-        summary_payload = build_chapter_summary_payload(content)
-
         try:
             with transaction.atomic():
                 project = NovelProject.objects.select_for_update().get(
@@ -280,22 +412,22 @@ class GenerateFromWSView(APIView):
                         'word_count': word_count,
                         'generation_meta': generation_meta,
                         'context_snapshot': context_snapshot,
-                        'summary': summary_payload['summary'],
-                        'open_threads': summary_payload['open_threads'],
+                        'summary': '',
+                        'open_threads': [],
                         'consistency_status': {},
                         'status': 'draft',
                         'generated_at': timezone.now(),
                         'is_deleted': False,
                     },
                 )
-                ChapterSummary.objects.update_or_create(
-                    project=project,
-                    chapter=chapter,
-                    defaults=summary_payload,
+                refresh_chapter_workflow_assets(project, chapter, content)
+                review = sync_chapter_review(
+                    chapter,
+                    reviewer=request.user,
+                    refresh_ai=True,
+                    reset_status=True,
                 )
-                analysis_payload = analyze_chapter_assets(project, chapter, content)
-                chapter.consistency_status = analysis_payload['consistency_status']
-                chapter.save(update_fields=['consistency_status', 'updated_at'])
+                chapter.review_record = review
                 project.current_chapter = max(project.current_chapter, chapter_number)
                 project.last_update_at = timezone.now()
                 project.save(update_fields=['current_chapter', 'last_update_at', 'updated_at'])

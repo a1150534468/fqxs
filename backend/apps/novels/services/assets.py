@@ -6,6 +6,10 @@ import json
 import re
 from typing import Any
 
+from apps.chapters.services.analysis import derive_chapter_asset_snapshot
+from apps.chapters.services.workflow import evaluate_generation_workflow_gate
+from apps.chapters.models import ChapterSummary
+from django.db.models import Q
 from apps.novels.models import (
     ForeshadowItem,
     KnowledgeFact,
@@ -96,6 +100,281 @@ def _dedupe_keep_order(values: list[str]) -> list[str]:
         seen.add(text)
         unique_values.append(text)
     return unique_values
+
+
+def _simplify_quality_issues(quality: dict[str, Any]) -> list[dict[str, str]]:
+    issues = _safe_list((quality or {}).get('issues'))
+    simplified: list[dict[str, str]] = []
+    for item in issues[:5]:
+        if not isinstance(item, dict):
+            continue
+        simplified.append({
+            'code': _trim(item.get('code'), 60),
+            'severity': _trim(item.get('severity'), 30),
+            'message': _trim(item.get('message'), 120),
+            'suggestion': _trim(item.get('suggestion'), 160),
+        })
+    return simplified
+
+
+def build_chapter_asset_payload(project, chapter, summary_record: ChapterSummary | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Return persisted chapter assets, or derive a read-only fallback for legacy/manual chapters."""
+    persisted_assets = ((chapter.consistency_status or {}).get('chapter_assets') or {})
+    key_events = _safe_list(summary_record.key_events if summary_record else [])
+    open_threads = _safe_list(summary_record.open_threads if summary_record else [])
+    source_text = '\n'.join(filter(None, [
+        chapter.final_content,
+        chapter.raw_content,
+        chapter.summary,
+        summary_record.summary if summary_record else '',
+        *key_events,
+        *(chapter.open_threads or []),
+        *open_threads,
+    ]))
+    derived_assets = derive_chapter_asset_snapshot(project, source_text) if source_text else {}
+
+    event_cards = _safe_list(persisted_assets.get('event_cards'))
+    if not event_cards:
+        event_cards = _safe_list(derived_assets.get('event_cards'))
+    if not event_cards:
+        event_cards = [
+            {
+                'label': _trim(event, 48),
+                'event_type': 'progress',
+                'tension_level': 'medium',
+                'actors': [],
+                'locations': [],
+                'evidence': _trim(event, 180),
+            }
+            for event in key_events[:4]
+            if str(event or '').strip()
+        ]
+    if not event_cards and chapter.summary:
+        event_cards = [{
+            'label': _trim(chapter.summary, 48),
+            'event_type': 'progress',
+            'tension_level': 'medium',
+            'actors': [],
+            'locations': [],
+            'evidence': _trim(chapter.summary, 180),
+        }]
+
+    character_mentions = _safe_list(persisted_assets.get('character_mentions'))
+    if not character_mentions:
+        character_mentions = _safe_list(derived_assets.get('character_mentions'))
+
+    location_mentions = _safe_list(persisted_assets.get('location_mentions'))
+    if not location_mentions:
+        location_mentions = _safe_list(derived_assets.get('location_mentions'))
+
+    return {
+        'event_cards': event_cards[:4],
+        'character_mentions': character_mentions[:8],
+        'location_mentions': location_mentions[:8],
+    }
+
+
+def _serialize_summary_payload(summary_record: ChapterSummary) -> dict[str, Any]:
+    return {
+        'chapter_number': summary_record.chapter.chapter_number,
+        'summary': _trim(summary_record.summary, 220),
+        'open_threads': _safe_list(summary_record.open_threads)[:5],
+    }
+
+
+def _build_related_chapter_recalls(
+    project,
+    chapter_number: int,
+    query_texts: list[str],
+    chapter_summaries: list[ChapterSummary],
+) -> list[dict[str, Any]]:
+    summary_by_chapter_id = {
+        summary.chapter_id: summary
+        for summary in chapter_summaries
+    }
+    query_tokens = _tokenize(' '.join(filter(None, query_texts)))
+    query_token_set = set(query_tokens)
+
+    target_chapter = (
+        project.chapters.filter(is_deleted=False, chapter_number=chapter_number)
+        .first()
+    )
+    target_summary = summary_by_chapter_id.get(target_chapter.id) if target_chapter else None
+    target_assets = (
+        build_chapter_asset_payload(project, target_chapter, target_summary)
+        if target_chapter else {'event_cards': [], 'character_mentions': [], 'location_mentions': []}
+    )
+    target_characters = {
+        str(item.get('name') or '').strip()
+        for item in _safe_list(target_assets.get('character_mentions'))
+        if str(item.get('name') or '').strip()
+    }
+    target_locations = {
+        str(item.get('name') or '').strip()
+        for item in _safe_list(target_assets.get('location_mentions'))
+        if str(item.get('name') or '').strip()
+    }
+
+    candidate_chapters = list(
+        project.chapters.select_related('review_record')
+        .filter(is_deleted=False, chapter_number__lt=chapter_number)
+        .order_by('-chapter_number')[:12]
+    )
+
+    decorated: list[tuple[float, int, int, dict[str, Any]]] = []
+    for chapter in candidate_chapters:
+        summary_record = summary_by_chapter_id.get(chapter.id)
+        chapter_assets = build_chapter_asset_payload(project, chapter, summary_record)
+        key_events = _safe_list(summary_record.key_events if summary_record else [])[:4]
+        open_threads = _dedupe_keep_order([
+            *(_safe_list(chapter.open_threads)),
+            *(_safe_list(summary_record.open_threads if summary_record else [])),
+        ])[:4]
+        summary_text = _trim(
+            (summary_record.summary if summary_record else chapter.summary) or '',
+            220,
+        )
+        event_labels = [
+            str(item.get('label') or item.get('evidence') or '').strip()
+            for item in _safe_list(chapter_assets.get('event_cards'))
+            if isinstance(item, dict)
+        ][:4]
+        character_names = {
+            str(item.get('name') or '').strip()
+            for item in _safe_list(chapter_assets.get('character_mentions'))
+            if str(item.get('name') or '').strip()
+        }
+        location_names = {
+            str(item.get('name') or '').strip()
+            for item in _safe_list(chapter_assets.get('location_mentions'))
+            if str(item.get('name') or '').strip()
+        }
+
+        candidate_text = ' '.join(filter(None, [
+            chapter.title,
+            chapter.summary,
+            summary_text,
+            *key_events,
+            *open_threads,
+            *event_labels,
+        ]))
+        if not candidate_text.strip():
+            continue
+
+        gap = max(chapter_number - chapter.chapter_number, 1)
+        score = float(_score_text(candidate_text, query_tokens))
+        score += max(0, 12 - gap)
+
+        thread_overlap = len(set(_tokenize(' '.join(open_threads))) & query_token_set)
+        if thread_overlap:
+            score += min(thread_overlap, 5) * 1.5
+
+        shared_characters = sorted(target_characters & character_names)
+        if shared_characters:
+            score += min(len(shared_characters), 3) * 3
+
+        shared_locations = sorted(target_locations & location_names)
+        if shared_locations:
+            score += min(len(shared_locations), 2) * 2
+
+        chapter_review = getattr(chapter, 'review_record', None)
+        if chapter_review and chapter_review.status in {'pending', 'revise'}:
+            score += 1.5
+
+        reasons: list[str] = []
+        if gap == 1:
+            reasons.append('直接前章承接')
+        if thread_overlap:
+            reasons.append('线索与当前任务重合')
+        if shared_characters:
+            reasons.append(f"关联角色：{'、'.join(shared_characters[:2])}")
+        if shared_locations:
+            reasons.append(f"关联地点：{'、'.join(shared_locations[:2])}")
+        if chapter_review and chapter_review.status in {'pending', 'revise'}:
+            reasons.append(f"审阅状态：{chapter_review.status}")
+        if not reasons:
+            reasons.append('语义上与当前章节更接近')
+
+        decorated.append((
+            score,
+            gap,
+            -chapter.chapter_number,
+            {
+                'chapter_number': chapter.chapter_number,
+                'title': chapter.title or f'第{chapter.chapter_number}章',
+                'summary': summary_text,
+                'key_events': key_events,
+                'open_threads': open_threads,
+                'review_status': chapter_review.status if chapter_review else 'missing',
+                'relevance_score': round(score, 2),
+                'why_selected': reasons[:3],
+            },
+        ))
+
+    decorated.sort(key=lambda item: (-item[0], item[1], item[2]))
+    return [item for _, _, _, item in decorated[:4]]
+
+
+def _build_target_chapter_context(project, chapter_number: int) -> dict[str, Any]:
+    target_chapter = (
+        project.chapters.select_related('review_record')
+        .filter(chapter_number=chapter_number, is_deleted=False)
+        .order_by('-updated_at')
+        .first()
+    )
+    if not target_chapter:
+        return {
+            'exists': False,
+            'chapter_number': chapter_number,
+        }
+
+    summary_record = (
+        ChapterSummary.objects
+        .filter(project=project, chapter=target_chapter)
+        .first()
+    )
+    review = getattr(target_chapter, 'review_record', None)
+    consistency = target_chapter.consistency_status or {}
+    quality = consistency.get('quality') or {}
+    chapter_assets = build_chapter_asset_payload(project, target_chapter, summary_record)
+    open_threads = _dedupe_keep_order([
+        *(_safe_list(target_chapter.open_threads)),
+        *(_safe_list(summary_record.open_threads if summary_record else [])),
+    ])
+
+    return {
+        'exists': True,
+        'chapter_id': target_chapter.id,
+        'chapter_number': target_chapter.chapter_number,
+        'title': target_chapter.title or f'第{target_chapter.chapter_number}章',
+        'status': target_chapter.status,
+        'summary': _trim(
+            (summary_record.summary if summary_record else target_chapter.summary) or '',
+            260,
+        ),
+        'key_events': _safe_list(summary_record.key_events if summary_record else [])[:5],
+        'open_threads': open_threads[:5],
+        'review': {
+            'status': review.status if review else 'missing',
+            'review_notes': _trim(review.review_notes if review else '', 220),
+            'ai_review': _trim(review.ai_review if review else '', 220),
+            'ai_action_items': _safe_list(review.ai_action_items if review else [])[:5],
+            'modification_rate': review.modification_rate if review else None,
+        },
+        'consistency_risks': _safe_list(consistency.get('risks'))[:5],
+        'chapter_assets': {
+            'event_cards': _safe_list(chapter_assets.get('event_cards'))[:4],
+            'character_mentions': _safe_list(chapter_assets.get('character_mentions'))[:6],
+            'location_mentions': _safe_list(chapter_assets.get('location_mentions'))[:6],
+        },
+        'quality': {
+            'score': quality.get('score'),
+            'tension_score': quality.get('tension_score'),
+            'rhythm_status': quality.get('rhythm_status'),
+            'style_risk': quality.get('style_risk'),
+            'issues': _simplify_quality_issues(quality),
+        },
+    }
 
 
 def _join_values(values: list[str], limit: int = 3) -> str:
@@ -258,6 +537,7 @@ def _build_continuity_alerts(
     recent_open_threads: list[str],
     due_foreshadow_items: list[dict[str, Any]],
     knowledge_facts: list[dict[str, Any]],
+    review_feedback: list[dict[str, Any]],
 ) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
 
@@ -291,6 +571,29 @@ def _build_continuity_alerts(
             'title': '稳定事实较少',
             'detail': '本章写作时尽量复用既有设定锚点，避免一次性引入太多新世界规则。',
         })
+
+    if review_feedback:
+        latest_feedback = review_feedback[0]
+        latest_status = latest_feedback.get('status')
+        latest_chapter = latest_feedback.get('chapter_number')
+        if latest_status == 'revise':
+            alerts.append({
+                'level': 'critical',
+                'title': '上一章仍需修订',
+                'detail': f"第{latest_chapter}章审阅状态为“需修订”，应先处理：{_trim(latest_feedback.get('review_notes') or latest_feedback.get('ai_review') or '补齐审阅意见', 72)}",
+            })
+        elif latest_status == 'pending':
+            alerts.append({
+                'level': 'warning',
+                'title': '上一章尚未审定',
+                'detail': f'第{latest_chapter}章还未完成正式审阅，继续生成时要特别注意承接风险。',
+            })
+        if (latest_feedback.get('modification_rate') or 0) < 15:
+            alerts.append({
+                'level': 'warning',
+                'title': '人工改稿幅度偏低',
+                'detail': f"第{latest_chapter}章当前预估修改率仅 {latest_feedback.get('modification_rate') or 0}% ，后续章节容易继承原稿问题。",
+            })
 
     return alerts
 
@@ -445,13 +748,21 @@ def initialize_project_assets(project) -> dict[str, int]:
 
 def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
     """Assemble the default generation context payload for writing a chapter."""
+    workflow_gate = evaluate_generation_workflow_gate(
+        project,
+        chapter_number,
+        block_on_pending=False,
+        enforce_modification_rate=False,
+    )
+    target_chapter_context = _build_target_chapter_context(project, chapter_number)
+    recent_summary_records = list(
+        project.chapter_summaries.select_related('chapter')
+        .filter(chapter__chapter_number__lt=chapter_number)
+        .order_by('-chapter__chapter_number')[:12]
+    )
     recent_summaries = [
-        {
-            'chapter_number': summary.chapter.chapter_number,
-            'summary': _trim(summary.summary, 220),
-            'open_threads': summary.open_threads[:5],
-        }
-        for summary in project.chapter_summaries.select_related('chapter').order_by('-chapter__chapter_number')[:5]
+        _serialize_summary_payload(summary)
+        for summary in recent_summary_records[:5]
     ]
 
     settings = _setting_map(project)
@@ -527,7 +838,11 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
             'chapter_number': item.chapter.chapter_number if item.chapter_id else None,
             'source_excerpt': _trim(item.source_excerpt, 180),
         }
-        for item in project.knowledge_facts.filter(status='confirmed').order_by('-updated_at')[:12]
+        for item in (
+            project.knowledge_facts.filter(status='confirmed')
+            .filter(Q(chapter__isnull=True) | Q(chapter__chapter_number__lt=chapter_number))
+            .order_by('-updated_at')[:24]
+        )
     ]
 
     foreshadow_items = [
@@ -539,10 +854,33 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
             'expected_payoff_chapter': item.expected_payoff_chapter,
             'related_character': item.related_character,
         }
-        for item in project.foreshadow_items.exclude(status='resolved').order_by('expected_payoff_chapter', '-updated_at')[:8]
+        for item in (
+            project.foreshadow_items.exclude(status='resolved')
+            .filter(
+                Q(introduced_in_chapter__isnull=True)
+                | Q(introduced_in_chapter__chapter_number__lt=chapter_number)
+            )
+            .order_by('expected_payoff_chapter', '-updated_at')[:20]
+        )
     ]
 
     style_profile = project.style_profiles.filter(profile_type='project').order_by('-updated_at').first()
+    review_feedback = [
+        {
+            'chapter_number': item.chapter.chapter_number,
+            'status': item.status,
+            'review_notes': _trim(item.review_notes, 180),
+            'ai_review': _trim(item.ai_review, 180),
+            'ai_action_items': _safe_list(item.ai_action_items)[:4],
+            'modification_rate': item.modification_rate,
+        }
+        for item in (
+            project.chapter_reviews.select_related('chapter')
+            .filter(chapter__chapter_number__lt=chapter_number)
+            .exclude(status='approved', review_notes='', ai_review='')
+            .order_by('-chapter__chapter_number')[:4]
+        )
+    ]
 
     nearby_plot_points = [
         point for point in plot_points
@@ -553,8 +891,16 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
         project.genre,
         project.synopsis or '',
         chapter_goal,
+        target_chapter_context.get('summary') or '',
+        *((target_chapter_context.get('key_events') or [])[:3]),
+        (
+            ((target_chapter_context.get('review') or {}).get('review_notes'))
+            or ((target_chapter_context.get('review') or {}).get('ai_review'))
+            or ''
+        ),
         *(point.get('description') or '' for point in nearby_plot_points[:3]),
         *(item.get('summary') or '' for item in recent_summaries[:3]),
+        *(item.get('review_notes') or item.get('ai_review') or '' for item in review_feedback[:2]),
     ]
 
     selected_settings = _rank_items(
@@ -622,6 +968,17 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
             + (4 if item.get('status') in {'open', 'hinted'} else 0)
         ),
     )
+    retrieved_chapters = _build_related_chapter_recalls(
+        project=project,
+        chapter_number=chapter_number,
+        query_texts=[
+            *query_texts,
+            *(item.get('title') or '' for item in foreshadow_items[:4]),
+            *(item.get('subject') or '' for item in knowledge_facts[:4]),
+            *(item.get('object') or '' for item in knowledge_facts[:4]),
+        ],
+        chapter_summaries=recent_summary_records,
+    )
 
     recent_open_threads = _dedupe_keep_order([
         thread
@@ -632,6 +989,36 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
         item for item in foreshadow_items
         if (item.get('expected_payoff_chapter') or chapter_number) <= chapter_number + 1
     ][:4]
+    target_review = target_chapter_context.get('review') or {}
+    target_assets = target_chapter_context.get('chapter_assets') or {}
+    review_actions = _dedupe_keep_order([
+        *[
+            action
+            for action in _safe_list(target_review.get('ai_action_items'))
+            if str(action or '').strip()
+        ],
+        target_review.get('review_notes') or target_review.get('ai_review') or '',
+        *[
+            issue.get('suggestion') or issue.get('message') or ''
+            for issue in _safe_list((target_chapter_context.get('quality') or {}).get('issues'))
+            if isinstance(issue, dict)
+        ],
+        *[
+            str(item.get('label') or '')
+            for item in _safe_list(target_assets.get('event_cards'))
+            if isinstance(item, dict) and item.get('label')
+        ],
+        *[
+            action
+            for item in review_feedback[:2]
+            for action in _safe_list(item.get('ai_action_items'))
+            if str(action or '').strip()
+        ],
+        *[
+            item.get('review_notes') or item.get('ai_review') or ''
+            for item in review_feedback[:2]
+        ],
+    ])[:4]
 
     style_tone = ''
     style_themes: list[str] = []
@@ -670,6 +1057,7 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
             item['title']
             for item in due_foreshadow_items[:3]
         ],
+        'must_fix': review_actions[:3],
         'avoid': _dedupe_keep_order([
             '不要一次性解决所有开放线索',
             '不要引入未经铺垫的新设定替代现有冲突',
@@ -690,6 +1078,7 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
         recent_open_threads=recent_open_threads,
         due_foreshadow_items=due_foreshadow_items,
         knowledge_facts=knowledge_facts,
+        review_feedback=review_feedback,
     )
 
     context_layers = {
@@ -702,9 +1091,38 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
             f"风格基调：{_join_values(style_themes, 4) if style_themes else style_tone}",
         ]),
         'continuity': _dedupe_keep_order([
+            (
+                f"当前章底稿摘要：{target_chapter_context.get('summary')}"
+                if target_chapter_context.get('exists') and target_chapter_context.get('summary')
+                else ''
+            ),
+            (
+                f"当前章关键事件：{'；'.join(_safe_list(target_chapter_context.get('key_events'))[:4])}"
+                if target_chapter_context.get('exists') and target_chapter_context.get('key_events')
+                else ''
+            ),
+            (
+                "当前章事件卡："
+                + '；'.join(
+                    _trim(item.get('label') or item.get('evidence') or '', 72)
+                    for item in _safe_list(target_assets.get('event_cards'))[:4]
+                    if isinstance(item, dict)
+                )
+                if target_chapter_context.get('exists') and target_assets.get('event_cards')
+                else ''
+            ),
             *[
                 f"第{item['chapter_number']}章摘要：{item['summary']}"
                 for item in recent_summaries[:3]
+                if item.get('summary')
+            ],
+            *[
+                (
+                    f"关联章节：第{item['chapter_number']}章 {item.get('title', '')}。"
+                    f"{item.get('summary', '')}"
+                    f" 命中原因：{'；'.join(_safe_list(item.get('why_selected'))[:2])}"
+                )
+                for item in retrieved_chapters[:3]
                 if item.get('summary')
             ],
             *[
@@ -721,6 +1139,17 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
                 if due_foreshadow_items
                 else ''
             ),
+            *[
+                f"第{item['chapter_number']}章审阅：{item['review_notes'] or item['ai_review']}"
+                for item in review_feedback[:2]
+                if item.get('review_notes') or item.get('ai_review')
+            ],
+            (
+                f"当前章审阅：{target_review.get('review_notes') or target_review.get('ai_review')}"
+                if target_chapter_context.get('exists')
+                and (target_review.get('review_notes') or target_review.get('ai_review'))
+                else ''
+            ),
         ]),
         'tactical': _dedupe_keep_order([
             f"本章任务：{focus_card['mission']}",
@@ -731,6 +1160,11 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
                 f"推进故事线：{active_storyline['name']}"
                 if active_storyline
                 else '推进故事线：优先让主线获得新的确定性信息'
+            ),
+            (
+                f"优先修复：{'；'.join(review_actions[:3])}"
+                if review_actions
+                else ''
             ),
         ]),
     }
@@ -751,10 +1185,14 @@ def build_generation_context(project, chapter_number: int) -> dict[str, Any]:
         'plot_points': plot_points,
         'knowledge_facts': knowledge_facts,
         'foreshadow_items': foreshadow_items,
+        'review_feedback': review_feedback,
+        'target_chapter_context': target_chapter_context,
         'style_profile': {
             'content': _trim(style_profile.content, 220) if style_profile else '',
             'structured_data': style_profile.structured_data if style_profile else {},
         },
+        'retrieved_chapters': retrieved_chapters,
+        'workflow_gate': workflow_gate,
         'context_layers': context_layers,
         'focus_card': focus_card,
         'micro_beats': micro_beats,

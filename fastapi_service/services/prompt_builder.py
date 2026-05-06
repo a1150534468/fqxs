@@ -50,6 +50,9 @@ class PromptBuilder:
         context_layers = context_payload.get('context_layers') or {}
         micro_beats = context_payload.get('micro_beats') or []
         continuity_alerts = context_payload.get('continuity_alerts') or []
+        review_feedback = context_payload.get('review_feedback') or []
+        workflow_gate = context_payload.get('workflow_gate') or {}
+        target_chapter_context = context_payload.get('target_chapter_context') or {}
         style_profile = context_payload.get('style_profile') or {}
         style_content = style_profile.get('content') or ''
         style_structured = style_profile.get('structured_data') or {}
@@ -72,6 +75,11 @@ class PromptBuilder:
             f"- 关键转折：{focus_card.get('key_turn') or chapter_goal or '在中后段给出足以改变后续行动的转折。'}",
             f"- 情绪提示：{focus_card.get('emotional_note') or '情绪必须贴着动作和对话走。'}",
             f"- 收尾钩子：{focus_card.get('ending_hook') or '结尾要把下一步问题明确抛出。'}",
+            *(
+                [f"- 优先修复：{'；'.join((focus_card.get('must_fix') or [])[:3])}"]
+                if focus_card.get('must_fix')
+                else []
+            ),
         ]))
 
         sections.extend([
@@ -150,6 +158,91 @@ class PromptBuilder:
                 ],
             ))
 
+        if review_feedback:
+            sections.append(PromptBuilder._bullet_block(
+                "【审阅闭环】",
+                [
+                    (
+                        f"第{item.get('chapter_number')}章 {item.get('status')}: "
+                        f"{item.get('review_notes') or item.get('ai_review')}"
+                    )
+                    for item in review_feedback[:3]
+                ],
+            ))
+
+        if target_chapter_context.get('exists'):
+            target_review = target_chapter_context.get('review') or {}
+            quality = target_chapter_context.get('quality') or {}
+            chapter_assets = target_chapter_context.get('chapter_assets') or {}
+            sections.append("\n".join([
+                "【当前章节返修上下文】",
+                f"底稿摘要：{target_chapter_context.get('summary') or '暂无摘要'}",
+                *(
+                    [f"底稿关键事件：{'；'.join((target_chapter_context.get('key_events') or [])[:4])}"]
+                    if target_chapter_context.get('key_events')
+                    else []
+                ),
+                *(
+                    [f"底稿开放线索：{'；'.join((target_chapter_context.get('open_threads') or [])[:4])}"]
+                    if target_chapter_context.get('open_threads')
+                    else []
+                ),
+                *(
+                    [
+                        "底稿事件卡："
+                        + '；'.join(
+                            str(item.get('label') or item.get('evidence') or '')
+                            for item in (chapter_assets.get('event_cards') or [])[:4]
+                        )
+                    ]
+                    if chapter_assets.get('event_cards')
+                    else []
+                ),
+                *(
+                    [f"当前审阅状态：{target_review.get('status')}"]
+                    if target_review.get('status')
+                    else []
+                ),
+                *(
+                    [f"返修意见：{target_review.get('review_notes') or target_review.get('ai_review')}"]
+                    if target_review.get('review_notes') or target_review.get('ai_review')
+                    else []
+                ),
+                *(
+                    [f"返修动作：{'；'.join((target_review.get('ai_action_items') or [])[:4])}"]
+                    if target_review.get('ai_action_items')
+                    else []
+                ),
+                *(
+                    [f"质量诊断：分数 {quality.get('score')} /100，节奏 {quality.get('rhythm_status')}，风格风险 {quality.get('style_risk')}"]
+                    if quality.get('score') is not None
+                    else []
+                ),
+            ]))
+
+        if workflow_gate.get('warnings'):
+            sections.append(PromptBuilder._bullet_block(
+                "【流程提醒】",
+                [
+                    item.get('detail') or item.get('title')
+                    for item in (workflow_gate.get('warnings') or [])[:3]
+                ],
+            ))
+
+        retrieved_chapters = context_payload.get('retrieved_chapters') or []
+        if retrieved_chapters:
+            sections.append(PromptBuilder._bullet_block(
+                "【关联章节召回】",
+                [
+                    (
+                        f"第{item.get('chapter_number')}章 {item.get('title')}: "
+                        f"{item.get('summary')} "
+                        f"（命中原因：{'；'.join((item.get('why_selected') or [])[:2])}）"
+                    )
+                    for item in retrieved_chapters[:4]
+                ],
+            ))
+
         recent_summaries = context_payload.get('recent_summaries') or []
         if recent_summaries:
             sections.append(PromptBuilder._bullet_block(
@@ -183,9 +276,64 @@ class PromptBuilder:
         return "\n\n".join(section for section in sections if section)
 
     @staticmethod
-    def build_continue_prompt(current_content: str, continue_length: int) -> str:
-        template = PromptBuilder._load_template('continue_template.txt')
-        return template.format(
-            current_content=current_content,
-            continue_length=continue_length
-        )
+    def build_continue_prompt(
+        current_content: str,
+        continue_length: int,
+        context_payload: dict[str, Any] | None = None,
+    ) -> str:
+        payload = context_payload or {}
+        focus_card = payload.get('focus_card') or {}
+        target_chapter_context = payload.get('target_chapter_context') or {}
+        workflow_gate = payload.get('workflow_gate') or {}
+        review = target_chapter_context.get('review') or {}
+        quality = target_chapter_context.get('quality') or {}
+
+        sections = [
+            "【续写任务】",
+            f"- 目标长度：约 {continue_length} 字",
+            f"- 当前章：第{target_chapter_context.get('chapter_number') or payload.get('chapter_number') or '?'}章",
+        ]
+        if focus_card.get('mission'):
+            sections.append(f"- 本章任务：{focus_card.get('mission')}")
+        if focus_card.get('conflict'):
+            sections.append(f"- 当前冲突：{focus_card.get('conflict')}")
+        if focus_card.get('ending_hook'):
+            sections.append(f"- 收尾钩子：{focus_card.get('ending_hook')}")
+        if focus_card.get('must_fix'):
+            sections.append(f"- 优先修复：{'；'.join((focus_card.get('must_fix') or [])[:4])}")
+        if target_chapter_context.get('summary'):
+            sections.append(f"- 已有章节摘要：{target_chapter_context.get('summary')}")
+        if target_chapter_context.get('key_events'):
+            sections.append(
+                f"- 已成立关键事件：{'；'.join((target_chapter_context.get('key_events') or [])[:4])}"
+            )
+        if target_chapter_context.get('open_threads'):
+            sections.append(
+                f"- 当前开放线索：{'；'.join((target_chapter_context.get('open_threads') or [])[:4])}"
+            )
+        if review.get('review_notes') or review.get('ai_review'):
+            sections.append(f"- 审阅意见：{review.get('review_notes') or review.get('ai_review')}")
+        if review.get('ai_action_items'):
+            sections.append(f"- 修订动作：{'；'.join((review.get('ai_action_items') or [])[:4])}")
+        if quality.get('issues'):
+            sections.append(
+                f"- 质量问题：{'；'.join(item.get('message') for item in quality.get('issues')[:3] if item.get('message'))}"
+            )
+        if workflow_gate.get('warnings'):
+            sections.append(
+                f"- 流程提醒：{'；'.join(item.get('detail') or item.get('title') for item in workflow_gate.get('warnings')[:3])}"
+            )
+
+        sections.extend([
+            "",
+            "【续写约束】",
+            "- 直接承接已给出的正文，不要重写前文已完成段落。",
+            "- 保留已成立事件和人物动机，只向后推进，不要改掉前面已经写出的事实。",
+            "- 续写必须优先消化审阅意见和返修动作，避免继续扩散旧问题。",
+            "- 只输出正文内容，不要输出标题、说明或分析。",
+            "",
+            "【当前正文】",
+            current_content,
+        ])
+
+        return "\n".join(section for section in sections if section is not None)

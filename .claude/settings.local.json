@@ -34,7 +34,16 @@
       "Bash(~/.local/bin/ccb codex:*)",
       "Bash(tmux kill-pane:*)",
       "WebFetch(domain:ncnnujysujcj.feishu.cn)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(find:*)",
+      "Bash(grep -E \"\\\\.env$|\\\\.env\\\\.local$\")",
+      "Bash(docker-compose up:*)",
+      "Bash(brew services:*)",
+      "Bash(mysql:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:8000/api/)",
+      "Bash(curl -s http://localhost:8001/)",
+      "Bash(curl -s http://localhost:5173/)"
     ]
   }
 }

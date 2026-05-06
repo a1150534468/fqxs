@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 
-from apps.chapters.models import Chapter, ChapterSummary
+from apps.chapters.models import Chapter, ChapterReview, ChapterSummary
 from apps.novels.models import NovelProject
 
 PUBLISH_STATUS_CHOICES = ('draft', 'published', 'failed')
@@ -30,6 +30,8 @@ class ChapterSerializer(serializers.ModelSerializer):
         required=True,
     )
     publish_status = serializers.SerializerMethodField()
+    review_status = serializers.SerializerMethodField()
+    has_ai_review = serializers.SerializerMethodField()
 
     class Meta:
         model = Chapter
@@ -51,6 +53,8 @@ class ChapterSerializer(serializers.ModelSerializer):
             'llm_provider',
             'status',
             'publish_status',
+            'review_status',
+            'has_ai_review',
             'generated_at',
             'reviewed_at',
             'published_at',
@@ -73,6 +77,16 @@ class ChapterSerializer(serializers.ModelSerializer):
     def get_publish_status(self, obj):
         """Expose simplified publish status values for clients."""
         return INTERNAL_TO_PUBLISH_STATUS.get(obj.status, 'draft')
+
+    def get_review_status(self, obj):
+        """Expose review status from the linked review record when available."""
+        review = getattr(obj, 'review_record', None)
+        return getattr(review, 'status', 'pending')
+
+    def get_has_ai_review(self, obj):
+        """Whether a generated review suggestion exists for this chapter."""
+        review = getattr(obj, 'review_record', None)
+        return bool(getattr(review, 'ai_review', ''))
 
     def validate_project_id(self, value):
         """Ensure users can only attach chapters to their own projects."""
@@ -112,6 +126,10 @@ class ChapterSerializer(serializers.ModelSerializer):
 
         publish_status = self._extract_publish_status()
         if publish_status is not None:
+            if publish_status == 'published':
+                raise serializers.ValidationError(
+                    {'publish_status': 'Direct publish updates are not allowed. Use the publish action.'}
+                )
             attrs['status'] = PUBLISH_TO_INTERNAL_STATUS[publish_status]
         elif self.instance is None and 'status' not in attrs:
             attrs['status'] = PUBLISH_TO_INTERNAL_STATUS['draft']
@@ -154,6 +172,33 @@ class ChapterSummarySerializer(serializers.ModelSerializer):
             'summary',
             'key_events',
             'open_threads',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+
+class ChapterReviewSerializer(serializers.ModelSerializer):
+    """Serializer for chapter review records."""
+
+    chapter_number = serializers.IntegerField(source='chapter.chapter_number', read_only=True)
+    reviewer_username = serializers.CharField(source='reviewer.username', read_only=True)
+
+    class Meta:
+        model = ChapterReview
+        fields = (
+            'id',
+            'project',
+            'chapter',
+            'chapter_number',
+            'reviewer',
+            'reviewer_username',
+            'status',
+            'review_notes',
+            'ai_review',
+            'ai_action_items',
+            'modification_rate',
+            'ai_generated_at',
             'created_at',
             'updated_at',
         )

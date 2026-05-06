@@ -73,6 +73,7 @@ class ConsistencyAnalysisResponse(APIBaseModel):
 class ContinueRequest(APIBaseModel):
     current_content: str = Field(..., min_length=1, max_length=50000)
     continue_length: int = Field(..., ge=100, le=5000)
+    context_payload: dict = Field(default_factory=dict)
 
 
 class ContinueResponse(APIBaseModel):

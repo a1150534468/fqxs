@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, InputNumber, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { Alert, Button, Empty, Input, InputNumber, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
+import { LeftOutlined, PlayCircleOutlined, RightOutlined, StopOutlined } from '@ant-design/icons';
 import type { StreamState } from '../../hooks/useChapterStream';
 import type {
   Chapter,
@@ -15,10 +15,19 @@ interface WritingCenterProps {
   selectedChapter: Chapter | null;
   streamState: StreamState;
   highlights?: WorkbenchHighlights;
+  canPrevChapter: boolean;
+  canNextChapter: boolean;
+  onPrevChapter: () => void;
+  onNextChapter: () => void;
   onStartContinuous: (targetChapter: number) => void;
   onGenerateNext: () => void;
   onContinueCurrent: () => void;
   onRegenerateCurrent: () => void;
+  onSaveChapterContent: (
+    chapterId: number,
+    content: string,
+    options?: { silent?: boolean }
+  ) => Promise<void>;
   onStop: () => void;
 }
 
@@ -37,16 +46,26 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
   selectedChapter,
   streamState,
   highlights,
+  canPrevChapter,
+  canNextChapter,
+  onPrevChapter,
+  onNextChapter,
   onStartContinuous,
   onGenerateNext,
   onContinueCurrent,
   onRegenerateCurrent,
+  onSaveChapterContent,
   onStop,
 }) => {
   const [activeTab, setActiveTab] = useState<CenterTabKey>('stream');
   const [showStartModal, setShowStartModal] = useState(false);
   const [targetChapterDraft, setTargetChapterDraft] = useState<number | null>(null);
+  const [draftContent, setDraftContent] = useState('');
+  const [draftBaseline, setDraftBaseline] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const textAreaRef = useRef<HTMLPreElement>(null);
+  const lastChapterIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (textAreaRef.current) {
@@ -71,6 +90,46 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
   }, [defaultIterationTarget, novel?.id]);
 
   const selectedContent = selectedChapter?.final_content || selectedChapter?.raw_content || '';
+  const contentDirty = draftContent !== draftBaseline;
+  const draftWordCount = useMemo(
+    () => draftContent.replace(/\s/g, '').length,
+    [draftContent],
+  );
+  const draftLineCount = useMemo(
+    () => (draftContent ? draftContent.split('\n').length : 0),
+    [draftContent],
+  );
+  const draftParagraphCount = useMemo(
+    () => (draftContent ? draftContent.split(/\n+/).filter((item) => item.trim()).length : 0),
+    [draftContent],
+  );
+  const estimatedModificationRate = useMemo(() => {
+    const original = (selectedChapter?.raw_content || '').replace(/\s/g, '');
+    const current = draftContent.replace(/\s/g, '');
+    if (!original) return null;
+
+    const compareLength = Math.min(original.length, current.length);
+    let sameCount = 0;
+    for (let index = 0; index < compareLength; index += 1) {
+      if (original[index] === current[index]) {
+        sameCount += 1;
+      }
+    }
+
+    const denominator = Math.max(original.length, current.length, 1);
+    return Math.max(0, Math.round((1 - (sameCount / denominator)) * 100));
+  }, [draftContent, selectedChapter?.raw_content]);
+  const workflowGate = highlights?.workflow_gate;
+  const workflowGateAlertType = workflowGate?.status === 'blocked'
+    ? 'error'
+    : workflowGate?.status === 'warning'
+      ? 'warning'
+      : 'info';
+  const reviewLabel = selectedChapter?.review_status === 'approved'
+    ? '已定稿'
+    : selectedChapter?.review_status === 'revise'
+      ? '需修订'
+      : '待审';
   const actionLabel = modeLabel[streamState.mode || 'generate'];
 
   const streamPlaceholder = highlights?.focus_card?.mission || highlights?.recommended_focus
@@ -100,6 +159,63 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
     setShowStartModal(false);
   };
 
+  useEffect(() => {
+    const currentChapterId = selectedChapter?.id ?? null;
+    const chapterChanged = currentChapterId !== lastChapterIdRef.current;
+
+    if (chapterChanged) {
+      lastChapterIdRef.current = currentChapterId;
+      setDraftContent(selectedContent);
+      setDraftBaseline(selectedContent);
+      setLastSavedAt(null);
+      return;
+    }
+
+    if (selectedContent !== draftBaseline) {
+      setDraftBaseline(selectedContent);
+      if (!contentDirty && !savingDraft) {
+        setDraftContent(selectedContent);
+      }
+    }
+  }, [
+    contentDirty,
+    draftBaseline,
+    savingDraft,
+    selectedChapter?.id,
+    selectedContent,
+  ]);
+
+  const handleSaveDraft = async (silent?: boolean) => {
+    if (!selectedChapter || !contentDirty || savingDraft) return;
+    setSavingDraft(true);
+    try {
+      await onSaveChapterContent(selectedChapter.id, draftContent, { silent });
+      setDraftBaseline(draftContent);
+      setLastSavedAt(new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }));
+    } catch {
+      // WorkspacePage already surfaces the error message.
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedChapter || !contentDirty || savingDraft || streamState.isRunning) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      void handleSaveDraft(true);
+    }, 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    contentDirty,
+    draftContent,
+    savingDraft,
+    selectedChapter,
+    streamState.isRunning,
+  ]);
+
   if (!novel) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
@@ -111,6 +227,15 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-slate-100 px-5 py-4">
+        {workflowGate && workflowGate.status !== 'ok' ? (
+          <Alert
+            type={workflowGateAlertType}
+            showIcon
+            className="mb-4"
+            message={workflowGate.status === 'blocked' ? '工作流闸门未通过' : '工作流提醒'}
+            description={workflowGate.summary}
+          />
+        ) : null}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Writing Desk</div>
@@ -120,6 +245,26 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                   ? `第 ${selectedChapter.chapter_number} 章 ${selectedChapter.title || ''}`.trim()
                   : `${novel.title} 工作台`}
               </h2>
+              {selectedChapter ? (
+                <Space size={[6, 6]} wrap>
+                  <Button
+                    size="small"
+                    icon={<LeftOutlined />}
+                    disabled={!canPrevChapter || streamState.isRunning}
+                    onClick={onPrevChapter}
+                  >
+                    上一章
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<RightOutlined />}
+                    disabled={!canNextChapter || streamState.isRunning}
+                    onClick={onNextChapter}
+                  >
+                    下一章
+                  </Button>
+                </Space>
+              ) : null}
               <Tag color={streamState.isRunning ? 'processing' : 'default'}>
                 {streamState.isRunning
                   ? (
@@ -146,6 +291,17 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
               {streamState.runMode === 'continuous' && streamState.targetChapter ? (
                 <span>
                   迭代进度：{streamState.completedChapters} / {Math.max(streamState.targetChapter - loopStartChapter + 1, 0)}
+                </span>
+              ) : null}
+              {selectedChapter ? (
+                <span>
+                  人工稿：{savingDraft ? '保存中' : contentDirty ? '有未保存修改' : '已同步'}
+                </span>
+              ) : null}
+              {selectedChapter ? <span>审阅状态：{reviewLabel}</span> : null}
+              {estimatedModificationRate != null ? (
+                <span>
+                  预估修改率 {estimatedModificationRate}%
                 </span>
               ) : null}
               {streamState.error && <Text type="danger">{streamState.error}</Text>}
@@ -249,12 +405,80 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
               {
                 key: 'manuscript',
                 label: '当前正文',
-                children: selectedContent ? (
-                  <div className={`${centerPanelHeightClass} overflow-y-auto rounded-[24px] border border-slate-200 bg-white px-6 py-5`}>
-                    <div className="mb-4 text-xs uppercase tracking-[0.2em] text-slate-400">Draft</div>
-                    <pre className="whitespace-pre-wrap font-sans text-[15px] leading-8 text-slate-700">
-                      {selectedContent}
-                    </pre>
+                children: selectedChapter ? (
+                  <div className={`${centerPanelHeightClass} flex flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white`}>
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">章节编辑器</div>
+                        <div className="text-xs text-slate-400">
+                          保存到人工审核稿；支持 Ctrl/Cmd + S，停顿 3 秒自动保存
+                        </div>
+                      </div>
+                      <Space size={[8, 8]} wrap>
+                        <Tag color={contentDirty ? 'orange' : 'green'} className="mr-0">
+                          {contentDirty ? '未保存修改' : '已同步'}
+                        </Tag>
+                        <Tag color="blue" className="mr-0">
+                          {draftWordCount.toLocaleString()} 字
+                        </Tag>
+                        {lastSavedAt ? (
+                          <Tag color="default" className="mr-0">
+                            已保存 {lastSavedAt}
+                          </Tag>
+                        ) : null}
+                        <Button
+                          type="primary"
+                          size="small"
+                          disabled={!contentDirty || streamState.isRunning}
+                          loading={savingDraft}
+                          onClick={() => { void handleSaveDraft(); }}
+                        >
+                          保存正文
+                        </Button>
+                      </Space>
+                    </div>
+
+                    {streamState.isRunning ? (
+                      <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                        生成任务运行中，正文编辑暂时锁定，避免覆盖流式结果。
+                      </div>
+                    ) : null}
+                    {estimatedModificationRate != null && estimatedModificationRate < 15 ? (
+                      <div className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+                        当前人工稿相对原稿的预估修改率为 {estimatedModificationRate}% ，低于 15%，发布前建议继续人工润色。
+                      </div>
+                    ) : null}
+
+                    <div className="flex-1 overflow-hidden p-4">
+                      <Input.TextArea
+                        value={draftContent}
+                        disabled={streamState.isRunning}
+                        onChange={(event) => setDraftContent(event.target.value)}
+                        onKeyDown={(event) => {
+                          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+                            event.preventDefault();
+                            void handleSaveDraft();
+                          }
+                        }}
+                        className="h-full"
+                        style={{ height: '100%', resize: 'none' }}
+                        placeholder="当前章节正文会显示在这里，可直接人工润色后保存。"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+                      <Space size={[12, 8]} wrap>
+                        <span>字数 {draftWordCount.toLocaleString()}</span>
+                        <span>段落 {draftParagraphCount}</span>
+                        <span>行数 {draftLineCount}</span>
+                        <span>状态 {selectedChapter.status || 'draft'}</span>
+                        <span>审核 {reviewLabel}</span>
+                        {estimatedModificationRate != null ? (
+                          <span>修改率 {estimatedModificationRate}%</span>
+                        ) : null}
+                      </Space>
+                      <span>{lastSavedAt ? `最近保存 ${lastSavedAt}` : '尚未保存人工稿'}</span>
+                    </div>
                   </div>
                 ) : (
                   <div className={`${centerPanelHeightClass} flex items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white`}>

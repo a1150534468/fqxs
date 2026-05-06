@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.chapters.models import Chapter, ChapterSummary
+from apps.chapters.models import Chapter, ChapterReview, ChapterSummary
 from apps.inspirations.models import Inspiration
 from apps.llm_providers.models import LLMProvider
 from apps.novels.models import ForeshadowItem, KnowledgeFact, NovelProject, NovelSetting, StyleProfile
@@ -175,6 +175,8 @@ class ChapterAPITest(TestCase):
         self.list_url = reverse('chapter-list')
         self.detail_url = reverse('chapter-detail', kwargs={'pk': self.chapter_draft.pk})
         self.other_detail_url = reverse('chapter-detail', kwargs={'pk': self.other_chapter.pk})
+        self.review_url = reverse('chapter-review', kwargs={'pk': self.chapter_draft.pk})
+        self.publish_url = reverse('chapter-publish', kwargs={'pk': self.chapter_draft.pk})
         self.generate_async_url = reverse('chapter-generate-async')
         self.generate_from_ws_url = reverse('chapter-generate-from-ws')
 
@@ -281,20 +283,133 @@ class ChapterAPITest(TestCase):
         self.assertEqual(response.data['id'], self.chapter_draft.id)
         self.assertEqual(response.data['publish_status'], 'draft')
 
-    def test_patch_chapter_updates_word_count_and_publish_status(self):
+    def test_patch_chapter_updates_word_count_and_refreshes_review(self):
+        ChapterReview.objects.create(
+            project=self.project,
+            chapter=self.chapter_draft,
+            reviewer=self.user,
+            status='approved',
+            review_notes='原稿已通过。',
+            modification_rate=24,
+        )
+
         response = self.client.patch(
             self.detail_url,
             {
                 'final_content': 'x y z',
-                'publish_status': 'published',
+                'publish_status': 'draft',
             },
             format='json',
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['word_count'], 3)
-        self.assertEqual(response.data['status'], 'published')
-        self.assertEqual(response.data['publish_status'], 'published')
+        self.assertEqual(response.data['status'], 'draft')
+        self.assertEqual(response.data['publish_status'], 'draft')
+        self.assertEqual(response.data['review_status'], 'pending')
+        review = ChapterReview.objects.get(chapter=self.chapter_draft)
+        self.assertEqual(review.status, 'pending')
+        self.assertTrue(review.ai_review)
+        self.chapter_draft.refresh_from_db()
+        self.assertIsNone(self.chapter_draft.reviewed_at)
+
+    def test_patch_chapter_rejects_direct_publish_status(self):
+        response = self.client.patch(
+            self.detail_url,
+            {
+                'publish_status': 'published',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('publish_status', response.data)
+
+    def test_review_get_creates_default_review_record(self):
+        response = self.client.get(self.review_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'pending')
+        self.assertEqual(response.data['chapter'], self.chapter_draft.id)
+        self.assertTrue(ChapterReview.objects.filter(chapter=self.chapter_draft).exists())
+
+    def test_review_post_can_generate_ai_and_update_status(self):
+        response = self.client.post(
+            self.review_url,
+            {
+                'generate_ai': True,
+                'status': 'revise',
+                'apply_ai_to_notes': True,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'revise')
+        self.assertTrue(response.data['ai_review'])
+        self.assertTrue(response.data['ai_action_items'])
+        self.assertGreaterEqual(response.data['modification_rate'], 0)
+        review = ChapterReview.objects.get(chapter=self.chapter_draft)
+        self.assertEqual(review.reviewer, self.user)
+        self.assertTrue(review.review_notes)
+        self.chapter_draft.refresh_from_db()
+        self.assertIsNotNone(self.chapter_draft.reviewed_at)
+
+    def test_review_post_rejects_approval_when_modification_rate_too_low(self):
+        self.chapter_draft.raw_content = '原稿内容几乎没有变化。'
+        self.chapter_draft.final_content = '原稿内容几乎没有变化。'
+        self.chapter_draft.word_count = len(self.chapter_draft.final_content)
+        self.chapter_draft.save(update_fields=['raw_content', 'final_content', 'word_count', 'updated_at'])
+
+        response = self.client.post(
+            self.review_url,
+            {
+                'status': 'approved',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('低于 15%', response.data['error'])
+
+    def test_publish_requires_approved_review(self):
+        response = self.client.post(self.publish_url, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('approved', response.data['error'])
+
+    @patch('apps.chapters.views.publish_chapter_async.delay')
+    def test_publish_accepts_approved_review(self, mock_delay):
+        mock_delay.return_value = SimpleNamespace(id='publish-task-1')
+        ChapterReview.objects.create(
+            project=self.project,
+            chapter=self.chapter_draft,
+            reviewer=self.user,
+            status='approved',
+            review_notes='人工审阅通过。',
+            modification_rate=26,
+        )
+
+        response = self.client.post(self.publish_url, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['task_id'], 'publish-task-1')
+        mock_delay.assert_called_once()
+
+    def test_publish_rejects_low_modification_rate_even_if_review_approved(self):
+        ChapterReview.objects.create(
+            project=self.project,
+            chapter=self.chapter_draft,
+            reviewer=self.user,
+            status='approved',
+            review_notes='形式上通过，但改动不足。',
+            modification_rate=8,
+        )
+
+        response = self.client.post(self.publish_url, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('at least 15%', response.data['error'])
 
     def test_delete_chapter_soft_deletes_and_hides_resource(self):
         response = self.client.delete(self.detail_url)
@@ -475,6 +590,10 @@ class ChapterAPITest(TestCase):
         self.assertTrue(chapter.summary)
         self.assertIsInstance(chapter.open_threads, list)
         self.assertIn(chapter.consistency_status['status'], {'ok', 'warning'})
+        review = ChapterReview.objects.get(chapter=chapter)
+        self.assertEqual(review.status, 'pending')
+        self.assertTrue(review.ai_review)
+        self.assertGreaterEqual(review.modification_rate, 0)
 
         summary_record = ChapterSummary.objects.get(chapter=chapter)
         self.assertEqual(summary_record.project, self.project)

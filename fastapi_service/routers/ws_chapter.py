@@ -218,6 +218,7 @@ async def _stream_generation(target: dict, context_snapshot: dict, token: str | 
         continued_content, _continued_words = await llm_client.continue_content(
             current_content=current_content,
             continue_length=target["continue_length"],
+            context_payload=context_snapshot,
             user_token=token,
         )
 
@@ -333,6 +334,7 @@ async def _run_generation_session(
     completed_chapters = 0
     last_saved_chapter: dict | None = None
     stop_reason = "completed"
+    stop_message: str | None = None
 
     while current_chapter <= target_chapter:
         if stop_event.is_set():
@@ -363,6 +365,45 @@ async def _run_generation_session(
         context_snapshot["run_mode"] = run_mode
         context_snapshot["target_chapter"] = target_chapter
         context_snapshot["chapter_title"] = current_target["chapter_title"]
+        workflow_gate = context_snapshot.get("workflow_gate") or {}
+
+        if mode == "generate" and not workflow_gate.get("allowed", True):
+            stop_reason = "workflow_gate"
+            stop_message = workflow_gate.get("summary") or "工作流闸门未通过，当前生成已暂停。"
+            await _safe_send(
+                websocket,
+                _with_session(
+                    {
+                        "type": "log",
+                        "message": f"工作流闸门拦截：{stop_message}",
+                        "timestamp": _timestamp(),
+                        "chapter_number": current_chapter,
+                        "mode": mode,
+                        "run_mode": run_mode,
+                        "target_chapter": target_chapter,
+                    },
+                    session_id,
+                ),
+            )
+            break
+
+        gate_warnings = workflow_gate.get("warnings") or []
+        if mode == "generate" and gate_warnings:
+            await _safe_send(
+                websocket,
+                _with_session(
+                    {
+                        "type": "log",
+                        "message": f"流程提醒：{gate_warnings[0].get('detail') or workflow_gate.get('summary')}",
+                        "timestamp": _timestamp(),
+                        "chapter_number": current_chapter,
+                        "mode": mode,
+                        "run_mode": run_mode,
+                        "target_chapter": target_chapter,
+                    },
+                    session_id,
+                ),
+            )
 
         if not await _safe_send(
             websocket,
@@ -571,6 +612,8 @@ async def _run_generation_session(
     final_word_count = last_saved_chapter.get("word_count") if last_saved_chapter else None
     if stop_reason == "target_reached":
         final_message = f"已达到目标章节第{target_chapter}章，自动停止迭代"
+    elif stop_reason == "workflow_gate":
+        final_message = stop_message or "工作流闸门已触发，当前生成任务暂停。"
     elif stop_reason == "stopped":
         final_message = "已停止连续迭代"
     else:
