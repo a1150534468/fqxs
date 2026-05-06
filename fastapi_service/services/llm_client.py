@@ -459,6 +459,24 @@ class LLMClient:
             setting_type, book_title, genre, context, prior_settings, user_token,
         )
 
+    async def generate_book_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        count: int = 5,
+        user_token: str | None = None,
+    ) -> dict:
+        """Generate multiple book title suggestions based on inspiration.
+
+        Returns:
+            dict with 'titles' key containing list of {'title': str, 'reason': str}
+        """
+        if await self._should_use_mock(user_token):
+            return await self._mock_generate_book_titles(inspiration, genre, count)
+        return await self._real_generate_book_titles(
+            inspiration, genre, count, user_token,
+        )
+
     async def generate_setting_stream(
         self,
         setting_type: str,
@@ -778,6 +796,74 @@ class LLMClient:
             'validation_ok': False,
             'retries': retries,
         }
+
+    async def _real_generate_book_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        count: int = 5,
+        user_token: str | None = None,
+    ) -> dict:
+        """Generate book title suggestions using LLM."""
+        system_msg = f"""你是一位专业的网络小说书名策划师。根据用户提供的创意灵感和题材，生成 {count} 个吸引人的书名建议。
+
+书名要求：
+1. 简洁有力，易于记忆（建议 2-8 个字）
+2. 体现故事核心元素或主题
+3. 引发读者好奇心和想象力
+4. 符合网络小说命名习惯
+5. 避免过于常见或雷同
+
+输出格式要求：严格按照下面的 JSON 格式输出，不要有任何额外内容。
+
+```json
+{{
+  "titles": [
+    {{"title": "书名1", "reason": "推荐理由（20字以内）"}},
+    {{"title": "书名2", "reason": "推荐理由（20字以内）"}},
+    ...
+  ]
+}}
+```"""
+
+        user_msg = f"创意灵感：{inspiration}\n"
+        if genre:
+            user_msg += f"题材：{genre}\n"
+        user_msg += f"\n请生成 {count} 个书名建议，严格按照上述 JSON 格式输出。"
+
+        try:
+            response = await self._call_llm(
+                system_msg, user_msg, user_token=user_token,
+                task_type='setting',
+            )
+
+            # Extract JSON from response
+            json_match = JSON_FENCE_RE.search(response)
+            if json_match:
+                json_str = json_match.group(1).strip()
+            else:
+                # Try to find JSON without fence
+                json_str = response.strip()
+                if not json_str.startswith('{'):
+                    # Try to extract anything that looks like JSON
+                    start = json_str.find('{')
+                    end = json_str.rfind('}')
+                    if start >= 0 and end > start:
+                        json_str = json_str[start:end+1]
+
+            data = json.loads(json_str)
+            titles = data.get('titles', [])
+
+            # Validate and limit count
+            if not titles:
+                raise ValueError("No titles generated")
+
+            return {'titles': titles[:count]}
+
+        except Exception as e:
+            logger.error(f"Failed to generate book titles: {e}")
+            # Fallback to mock data
+            return await self._mock_generate_book_titles(inspiration, genre, count)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1201,6 +1287,36 @@ class LLMClient:
             await asyncio.sleep(0.03)
 
         yield ("done", result)
+
+    async def _mock_generate_book_titles(
+        self,
+        inspiration: str,
+        genre: str = "",
+        count: int = 5,
+    ) -> dict:
+        """Return mock book title suggestions."""
+        await asyncio.sleep(0.1)
+
+        # Generate mock titles based on inspiration keywords
+        base_titles = [
+            "修仙从养猪开始",
+            "都市之最强赘婿",
+            "重生之财富人生",
+            "星际争霸：虫族崛起",
+            "末世求生：我有系统",
+            "玄幻大陆：剑道至尊",
+            "穿越异界：魔法学徒",
+            "网游之天下无双",
+        ]
+
+        titles = []
+        for i in range(min(count, len(base_titles))):
+            titles.append({
+                'title': base_titles[i],
+                'reason': f'这个书名简洁有力，体现了{genre or "故事"}的核心元素，容易吸引读者注意。',
+            })
+
+        return {'titles': titles}
 
     async def analyze_chapter_summary(
         self,

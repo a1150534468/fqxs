@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { message, Button, Progress, Tag } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { message, Button, Progress, Tag, Alert } from 'antd';
+import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
 import { publishChapter, saveChapterReview, updateChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
 import { ChapterSidebar } from './ChapterSidebar';
@@ -76,6 +76,18 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const selectedChapter = selectedChapters.find((chapter) => chapter.id === selectedChapterId) ?? null;
   const selectedChapterIndex = selectedChapters.findIndex((chapter) => chapter.id === selectedChapterId);
   const nextChapterNumber = (selectedNovel?.current_chapter ?? 0) + 1;
+
+  // Check if book title is missing
+  const missingBookTitle = selectedNovel && (!selectedNovel.title || selectedNovel.title.trim() === '');
+
+  useEffect(() => {
+    if (missingBookTitle) {
+      message.warning({
+        content: '该项目尚未设置书名，建议先设置书名以获得更好的 AI 生成效果',
+        duration: 5,
+      });
+    }
+  }, [missingBookTitle]);
 
   const handleStartContinuous = (targetChapter: number) => {
     if (!selectedNovel) { message.warning('请先选择一本书'); return; }
@@ -239,6 +251,21 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
   return (
     <div className="flex h-screen flex-col bg-[#eef2f7]">
+      {missingBookTitle && (
+        <Alert
+          message="该项目尚未设置书名"
+          description="建议先设置书名以获得更好的 AI 生成效果。书名会影响 AI 对故事风格和主题的理解。"
+          type="warning"
+          showIcon
+          closable
+          action={
+            <Button size="small" type="primary" icon={<EditOutlined />}>
+              设置书名
+            </Button>
+          }
+          className="rounded-none border-x-0 border-t-0"
+        />
+      )}
       <div className="border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex w-full max-w-[1780px] flex-col gap-4 px-4 py-3 sm:px-6 xl:flex-row xl:items-center">
           <Button

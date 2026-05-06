@@ -21,6 +21,8 @@ from models.schemas import (
     SettingGenerateRequest,
     SettingGenerateResponse,
     StyleDriftAnalysisResponse,
+    BookTitleGenerateRequest,
+    BookTitleGenerateResponse,
 )
 from services.llm_client import llm_client
 
@@ -125,6 +127,21 @@ async def generate_setting(
         user_token=token,
     )
     return SettingGenerateResponse(**result)
+
+
+@router.post("/generate/book-titles", response_model=BookTitleGenerateResponse)
+async def generate_book_titles(
+    payload: BookTitleGenerateRequest,
+    authorization: Optional[str] = Header(None),
+) -> BookTitleGenerateResponse:
+    token = _extract_token(authorization)
+    result = await llm_client.generate_book_titles(
+        inspiration=payload.inspiration,
+        genre=payload.genre,
+        count=payload.count,
+        user_token=token,
+    )
+    return BookTitleGenerateResponse(**result)
 
 
 @router.post("/analyze/chapter-summary", response_model=ChapterSummaryAnalysisResponse)

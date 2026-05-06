@@ -126,3 +126,8 @@ export const completeDraft = async (id: number | string) => {
   const response = await request.post(`/drafts/${id}/complete/`);
   return response.data;
 };
+
+export const generateBookTitles = async (data: { inspiration: string; genre?: string; count?: number }) => {
+  const response = await request.post('/fastapi/api/ai/generate/book-titles', data);
+  return response.data;
+};

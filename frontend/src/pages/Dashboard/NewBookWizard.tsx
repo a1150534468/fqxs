@@ -9,6 +9,7 @@ import {
   saveDraftStep,
   completeDraft,
   updateDraftTitle,
+  generateBookTitles,
 } from '../../api/novels';
 import { useSettingStream } from '../../hooks/useSettingStream';
 import type { NovelSettingRecord } from './types';
@@ -52,6 +53,8 @@ export const NewBookWizard = ({
 }: NewBookWizardProps) => {
   const [step, setStep] = useState(0);
   const [bookTitle, setBookTitle] = useState('');
+  const [titleSuggestions, setTitleSuggestions] = useState<Array<{ title: string; reason: string }>>([]);
+  const [generatingTitles, setGeneratingTitles] = useState(false);
   const [settings, setSettings] = useState<Record<string, NovelSettingRecord>>({});
   const [stepContent, setStepContent] = useState<Record<string, string>>({});
   const [stepTitles, setStepTitles] = useState<Record<string, string>>({});
@@ -104,6 +107,10 @@ export const NewBookWizard = ({
     if (pendingTitle) {
       setBookTitle(pendingTitle);
     }
+    // Auto-generate title suggestions when opening
+    if (pendingTitle) {
+      handleGenerateTitles(pendingTitle);
+    }
     getDraftSettings(draftId)
       .then((res) => {
         if (cancelled) return;
@@ -145,6 +152,7 @@ export const NewBookWizard = ({
     if (!open) {
       setStep(0);
       setBookTitle('');
+      setTitleSuggestions([]);
       setSettings({});
       setStepContent({});
       setStepTitles({});
@@ -243,6 +251,29 @@ export const NewBookWizard = ({
     autoGenTriggered.current[type] = true;
     void runGenerateRef.current(step);
   }, [open, loadingExisting, isFinalStep, draftId, step, stepContent, isStreaming]);
+
+  const handleGenerateTitles = async (inspiration?: string) => {
+    const inspirationText = inspiration || pendingTitle || '新书创意';
+    setGeneratingTitles(true);
+    try {
+      const res = await generateBookTitles({
+        inspiration: inspirationText,
+        genre: '',
+        count: 5,
+      });
+      if (res.titles && res.titles.length > 0) {
+        setTitleSuggestions(res.titles);
+        message.success(`已生成 ${res.titles.length} 个书名建议`);
+      } else {
+        message.warning('AI 未返回书名建议');
+      }
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data?.detail || '生成书名失败');
+    } finally {
+      setGeneratingTitles(false);
+    }
+  };
 
   const handleManualGenerate = async () => {
     if (!currentType) return;
@@ -655,13 +686,23 @@ export const NewBookWizard = ({
     return (
       <div className="space-y-4">
         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
-          <h3 className="text-lg font-semibold text-indigo-900 mb-2">为你的小说起个好名字</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-semibold text-indigo-900">为你的小说起个好名字</h3>
+            <Button
+              size="small"
+              icon={<ThunderboltOutlined />}
+              loading={generatingTitles}
+              onClick={() => handleGenerateTitles()}
+            >
+              AI 生成书名
+            </Button>
+          </div>
           <p className="text-sm text-gray-600 mb-4">
             一个好的书名能够吸引读者的注意力，传达故事的核心主题。
           </p>
           <Input
             size="large"
-            placeholder="请输入书名，例如：修仙从养猪开始"
+            placeholder="请输入书名，或从下方 AI 建议中选择"
             value={bookTitle}
             onChange={(e) => setBookTitle(e.target.value)}
             className="text-base"
@@ -669,6 +710,47 @@ export const NewBookWizard = ({
             showCount
           />
         </div>
+
+        {titleSuggestions.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <p className="text-xs font-medium text-gray-600 mb-3">🤖 AI 书名建议（点击选择）</p>
+            <div className="space-y-2">
+              {titleSuggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setBookTitle(suggestion.title)}
+                  className={`w-full text-left rounded-xl p-3 transition-all border ${
+                    bookTitle === suggestion.title
+                      ? 'bg-indigo-50 border-indigo-300 shadow-sm'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                      bookTitle === suggestion.title
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-slate-300 text-slate-700'
+                    }`}>
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1">
+                      <p className={`font-medium ${
+                        bookTitle === suggestion.title ? 'text-indigo-700' : 'text-slate-800'
+                      }`}>
+                        {suggestion.title}
+                      </p>
+                      {suggestion.reason && (
+                        <p className="text-xs text-gray-500 mt-1">{suggestion.reason}</p>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl p-4 border border-slate-200">
           <p className="text-xs font-medium text-gray-600 mb-2">💡 书名建议</p>
           <ul className="text-xs text-gray-500 space-y-1">
@@ -678,6 +760,7 @@ export const NewBookWizard = ({
             <li>• 避免过于常见或雷同的名字</li>
           </ul>
         </div>
+
         {pendingTitle && pendingTitle !== bookTitle && (
           <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
             <p className="text-xs font-medium text-amber-800 mb-1">原始灵感书名</p>
