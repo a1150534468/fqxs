@@ -63,6 +63,7 @@ export const NewBookWizard = ({
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const autoGenTriggered = useRef<Record<string, boolean>>({});
+  const titleGenTriggered = useRef(false);
 
   const {
     streamingText,
@@ -143,17 +144,44 @@ export const NewBookWizard = ({
     };
   }, [open, draftId]);
 
+  // Define handleGenerateTitles before using it in useEffect
+  const handleGenerateTitles = useCallback(async (inspiration?: string) => {
+    const inspirationText = inspiration || pendingTitle || '新书创意';
+    setGeneratingTitles(true);
+    try {
+      const res = await generateBookTitles({
+        inspiration: inspirationText,
+        genre: '',
+        count: 5,
+      });
+      if (res.titles && res.titles.length > 0) {
+        setTitleSuggestions(res.titles);
+        message.success(`已生成 ${res.titles.length} 个书名建议`);
+      } else {
+        message.warning('AI 未返回书名建议');
+      }
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data?.detail || '生成书名失败');
+    } finally {
+      setGeneratingTitles(false);
+    }
+  }, [pendingTitle]);
+
   // Auto-generate book titles when entering book_title step
   useEffect(() => {
     if (!open || !draftId || loadingExisting) return;
     if (currentType !== 'book_title') return;
-    if (titleSuggestions.length > 0) return; // Already generated
+    if (titleGenTriggered.current) return; // Already triggered
     if (generatingTitles) return; // Already generating
+
+    // Mark as triggered to prevent re-runs
+    titleGenTriggered.current = true;
 
     // Auto-generate on first entry to book_title step
     const inspiration = pendingTitle || '新书创意';
     handleGenerateTitles(inspiration);
-  }, [open, draftId, loadingExisting, currentType, titleSuggestions.length, generatingTitles, pendingTitle]);
+  }, [open, draftId, loadingExisting, currentType, generatingTitles, pendingTitle, handleGenerateTitles]);
 
   // Reset on close
   useEffect(() => {
@@ -166,6 +194,7 @@ export const NewBookWizard = ({
       setStepTitles({});
       setStepStructured({});
       autoGenTriggered.current = {};
+      titleGenTriggered.current = false;
       stop();
     }
   }, [open, stop]);
@@ -259,29 +288,6 @@ export const NewBookWizard = ({
     autoGenTriggered.current[type] = true;
     void runGenerateRef.current(step);
   }, [open, loadingExisting, isFinalStep, draftId, step, stepContent, isStreaming]);
-
-  const handleGenerateTitles = async (inspiration?: string) => {
-    const inspirationText = inspiration || pendingTitle || '新书创意';
-    setGeneratingTitles(true);
-    try {
-      const res = await generateBookTitles({
-        inspiration: inspirationText,
-        genre: '',
-        count: 5,
-      });
-      if (res.titles && res.titles.length > 0) {
-        setTitleSuggestions(res.titles);
-        message.success(`已生成 ${res.titles.length} 个书名建议`);
-      } else {
-        message.warning('AI 未返回书名建议');
-      }
-    } catch (err: any) {
-      console.error(err);
-      message.error(err?.response?.data?.detail || '生成书名失败');
-    } finally {
-      setGeneratingTitles(false);
-    }
-  };
 
   const handleManualGenerate = async () => {
     if (!currentType) return;

@@ -1,4 +1,24 @@
 import { request } from '../utils/request';
+import axios from 'axios';
+
+// FastAPI client for AI services
+const FASTAPI_BASE_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8001';
+const fastapiClient = axios.create({
+  baseURL: FASTAPI_BASE_URL,
+  timeout: 60000,
+});
+
+// Add auth token to FastAPI requests
+fastapiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 export const getNovels = async (params?: any) => {
   const response = await request.get('/novels/', { params });
@@ -128,6 +148,6 @@ export const completeDraft = async (id: number | string) => {
 };
 
 export const generateBookTitles = async (data: { inspiration: string; genre?: string; count?: number }) => {
-  const response = await request.post('/fastapi/api/ai/generate/book-titles', data);
+  const response = await fastapiClient.post('/api/ai/generate/book-titles', data);
   return response.data;
 };
