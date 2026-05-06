@@ -43,7 +43,12 @@
       "Bash(npm run:*)",
       "Bash(curl -s http://localhost:8000/api/)",
       "Bash(curl -s http://localhost:8001/)",
-      "Bash(curl -s http://localhost:5173/)"
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:8001/api/ai/generate/book-titles -H 'Content-Type: application/json' --data-raw '{\"inspiration\":\"测试\",\"genre\":\"\",\"count\":3}')",
+      "Bash(curl -s http://localhost:8001/docs)",
+      "Bash(pkill:*)",
+      "Bash(curl -s http://localhost:8001/api/ai/generate/book-titles -H 'Content-Type: application/json' --data-raw '{\"inspiration\":\"测试书名生成\",\"genre\":\"玄幻\",\"count\":3}')",
+      "Bash(curl:*)"
     ]
   }
 }

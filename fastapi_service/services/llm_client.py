@@ -471,7 +471,7 @@ class LLMClient:
         Returns:
             dict with 'titles' key containing list of {'title': str, 'reason': str}
         """
-        if await self._should_use_mock(user_token):
+        if await self._should_use_mock(user_token, task_type='setting'):
             return await self._mock_generate_book_titles(inspiration, genre, count)
         return await self._real_generate_book_titles(
             inspiration, genre, count, user_token,
