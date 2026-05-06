@@ -107,10 +107,6 @@ export const NewBookWizard = ({
     if (pendingTitle) {
       setBookTitle(pendingTitle);
     }
-    // Auto-generate title suggestions when opening
-    if (pendingTitle) {
-      handleGenerateTitles(pendingTitle);
-    }
     getDraftSettings(draftId)
       .then((res) => {
         if (cancelled) return;
@@ -146,6 +142,18 @@ export const NewBookWizard = ({
       cancelled = true;
     };
   }, [open, draftId]);
+
+  // Auto-generate book titles when entering book_title step
+  useEffect(() => {
+    if (!open || !draftId || loadingExisting) return;
+    if (currentType !== 'book_title') return;
+    if (titleSuggestions.length > 0) return; // Already generated
+    if (generatingTitles) return; // Already generating
+
+    // Auto-generate on first entry to book_title step
+    const inspiration = pendingTitle || '新书创意';
+    handleGenerateTitles(inspiration);
+  }, [open, draftId, loadingExisting, currentType, titleSuggestions.length, generatingTitles, pendingTitle]);
 
   // Reset on close
   useEffect(() => {
@@ -688,17 +696,14 @@ export const NewBookWizard = ({
         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-semibold text-indigo-900">为你的小说起个好名字</h3>
-            <Button
-              size="small"
-              icon={<ThunderboltOutlined />}
-              loading={generatingTitles}
-              onClick={() => handleGenerateTitles()}
-            >
-              AI 生成书名
-            </Button>
+            {generatingTitles && (
+              <Tag color="processing" icon={<ThunderboltOutlined className="animate-pulse" />}>
+                AI 生成中...
+              </Tag>
+            )}
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            一个好的书名能够吸引读者的注意力，传达故事的核心主题。
+            AI 正在为你生成书名建议，你可以选择一个或自己输入。
           </p>
           <Input
             size="large"
@@ -711,9 +716,26 @@ export const NewBookWizard = ({
           />
         </div>
 
+        {generatingTitles && titleSuggestions.length === 0 && (
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 flex items-center justify-center">
+            <Spin tip="AI 正在生成书名建议..." />
+          </div>
+        )}
+
         {titleSuggestions.length > 0 && (
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
-            <p className="text-xs font-medium text-gray-600 mb-3">🤖 AI 书名建议（点击选择）</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-medium text-gray-600">🤖 AI 书名建议（点击选择）</p>
+              <Button
+                size="small"
+                type="text"
+                icon={<ThunderboltOutlined />}
+                loading={generatingTitles}
+                onClick={() => handleGenerateTitles()}
+              >
+                重新生成
+              </Button>
+            </div>
             <div className="space-y-2">
               {titleSuggestions.map((suggestion, idx) => (
                 <button
