@@ -1,5 +1,6 @@
 import { request } from '../utils/request';
 import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 // FastAPI client for AI services
 const FASTAPI_BASE_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8001';
@@ -11,7 +12,7 @@ const fastapiClient = axios.create({
 // Add auth token to FastAPI requests
 fastapiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = useAuthStore.getState().token;
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }

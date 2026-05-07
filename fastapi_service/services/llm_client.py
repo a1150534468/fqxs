@@ -278,16 +278,24 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     async def _should_use_mock(self, user_token: str | None, task_type: str = 'chapter') -> bool:
+        print(f"[DEBUG _should_use_mock] task_type={task_type}, has_token={bool(user_token)}, mock_generation={settings.mock_generation}")
+
         if settings.mock_generation and not user_token:
+            print("[DEBUG _should_use_mock] Using mock: mock_generation=True and no token")
             return True
         if not user_token:
+            print("[DEBUG _should_use_mock] Using mock: no token provided")
             return True
         try:
             providers = await llm_provider_manager.fetch_providers_from_django(
                 user_token, task_type=task_type
             )
+            print(f"[DEBUG _should_use_mock] Fetched {len(providers) if providers else 0} providers for task_type={task_type}")
+            if not providers:
+                print(f"[DEBUG _should_use_mock] Using mock: no providers found for task_type={task_type}")
             return not providers
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG _should_use_mock] Using mock: exception occurred: {e}")
             return True
 
     # ------------------------------------------------------------------
@@ -805,6 +813,8 @@ class LLMClient:
         user_token: str | None = None,
     ) -> dict:
         """Generate book title suggestions using LLM."""
+        logger.info(f"[_real_generate_book_titles] Starting with inspiration: {inspiration[:50]}...")
+
         system_msg = f"""你是一位专业的网络小说书名策划师。根据用户提供的创意灵感和题材，生成 {count} 个吸引人的书名建议。
 
 书名要求：
@@ -832,10 +842,12 @@ class LLMClient:
         user_msg += f"\n请生成 {count} 个书名建议，严格按照上述 JSON 格式输出。"
 
         try:
+            logger.info(f"[_real_generate_book_titles] Calling LLM...")
             response = await self._call_llm(
                 system_msg, user_msg, user_token=user_token,
                 task_type='setting',
             )
+            logger.info(f"[_real_generate_book_titles] LLM response received: {response[:200]}...")
 
             # Extract JSON from response
             json_match = JSON_FENCE_RE.search(response)
@@ -858,11 +870,13 @@ class LLMClient:
             if not titles:
                 raise ValueError("No titles generated")
 
+            logger.info(f"[_real_generate_book_titles] Successfully generated {len(titles)} titles")
             return {'titles': titles[:count]}
 
         except Exception as e:
-            logger.error(f"Failed to generate book titles: {e}")
+            logger.error(f"[_real_generate_book_titles] Failed to generate book titles: {e}")
             # Fallback to mock data
+            logger.warning("[_real_generate_book_titles] Falling back to mock data")
             return await self._mock_generate_book_titles(inspiration, genre, count)
 
     # ------------------------------------------------------------------

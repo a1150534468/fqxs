@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     debug: bool = True
     host: str = "0.0.0.0"
     port: int = 8001
-    mock_generation: bool = True
+    mock_generation: bool = False
     llm_api_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-3.5-turbo"
