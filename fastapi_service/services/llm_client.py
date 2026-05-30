@@ -1018,12 +1018,13 @@ class LLMClient:
     ):
         await asyncio.sleep(0.08)
 
-        target_length = self._clamp(
-            700 + chapter_number * 35 + len(outline_context) // 5,
-            lower=700,
-            upper=3200,
-        )
         payload = context_payload or {}
+        requested_target_words = payload.get('target_words')
+        target_length = self._clamp(
+            requested_target_words or (700 + chapter_number * 35 + len(outline_context) // 5),
+            lower=700,
+            upper=12000,
+        )
         chapter_goal = (payload.get('chapter_goal') or '').strip()
         context_snippet = chapter_goal[:80] if chapter_goal else (
             outline_context[:80] if outline_context else "主线进入关键转折阶段。"

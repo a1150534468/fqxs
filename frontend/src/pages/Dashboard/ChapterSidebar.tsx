@@ -81,6 +81,12 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
     return normalizedTitle === normalizedFallback ? '' : rawTitle;
   };
 
+  const isFullAutoChapter = (chapter: Chapter) => Boolean(
+    chapter.generation_meta?.full_auto_mode
+    || chapter.generation_meta?.auto_review_skipped
+    || chapter.context_snapshot?.full_auto_mode,
+  );
+
   if (loading) return <Spin className="flex justify-center mt-8" />;
 
   if (!chapters.length) {
@@ -121,6 +127,7 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
             const isSelected = chapter.id === selectedChapterId;
             const consistencyStatus = String(chapter.consistency_status?.status || '');
             const displayTitle = getDisplayTitle(chapter);
+            const fullAutoChapter = isFullAutoChapter(chapter);
             const metaText = [
               `${chapter.word_count || 0} 字`,
               `${chapter.open_threads?.length || 0} 线索`,
@@ -157,9 +164,14 @@ export const ChapterSidebar: React.FC<ChapterSidebarProps> = ({
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1">
+                      {fullAutoChapter ? (
+                        <Tag color="cyan" className="mr-0 text-[11px]">
+                          免审
+                        </Tag>
+                      ) : null}
                       {chapter.review_status && chapter.review_status !== 'pending' ? (
                         <Tag color={chapter.review_status === 'approved' ? 'green' : 'orange'} className="mr-0 text-[11px]">
-                          {chapter.review_status === 'approved' ? '已审' : '待修'}
+                          {chapter.review_status === 'approved' ? (fullAutoChapter ? '自动' : '已审') : '待修'}
                         </Tag>
                       ) : null}
                       <Tag color={tag.color} className="mr-0 text-[11px]">

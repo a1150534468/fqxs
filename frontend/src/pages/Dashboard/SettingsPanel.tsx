@@ -30,6 +30,12 @@ const STEP_LABELS: Record<string, string> = {
   opening: '开篇',
 };
 
+const isFullAutoChapter = (chapter: Chapter) => Boolean(
+  chapter.generation_meta?.full_auto_mode
+  || chapter.generation_meta?.auto_review_skipped
+  || chapter.context_snapshot?.full_auto_mode,
+);
+
 interface SettingsPanelProps {
   settings: NovelSettingRecord[];
   chapter: Chapter | null;
@@ -1214,9 +1220,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                   {ch.word_count || 0} 字 · {ch.review_status === 'approved' ? '已定稿' : ch.review_status === 'revise' ? '需修订' : '待审'}
                                 </div>
                               </div>
-                              <Tag color={ch.consistency_status?.status === 'ok' ? 'green' : ch.consistency_status?.status ? 'orange' : 'default'} className="mr-0 shrink-0">
-                                {ch.consistency_status?.status || '未检'}
-                              </Tag>
+                              <div className="flex shrink-0 items-center gap-1">
+                                {isFullAutoChapter(ch) ? <Tag color="cyan" className="mr-0">免审</Tag> : null}
+                                <Tag color={ch.consistency_status?.status === 'ok' ? 'green' : ch.consistency_status?.status ? 'orange' : 'default'} className="mr-0">
+                                  {ch.consistency_status?.status || '未检'}
+                                </Tag>
+                              </div>
                             </div>
                           </div>
                         ))}

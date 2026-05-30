@@ -52,6 +52,7 @@ class PromptBuilder:
         continuity_alerts = context_payload.get('continuity_alerts') or []
         review_feedback = context_payload.get('review_feedback') or []
         workflow_gate = context_payload.get('workflow_gate') or {}
+        target_words = context_payload.get('target_words')
         target_chapter_context = context_payload.get('target_chapter_context') or {}
         style_profile = context_payload.get('style_profile') or {}
         style_content = style_profile.get('content') or ''
@@ -70,6 +71,7 @@ class PromptBuilder:
 
         sections.append("\n".join([
             "【章节任务卡】",
+            *([f"- 目标篇幅：约 {target_words} 字"] if target_words else []),
             f"- 主任务：{focus_card.get('mission') or chapter_goal or '围绕当前主线推进章节内容。'}",
             f"- 核心冲突：{focus_card.get('conflict') or '让角色在推进目标时遭遇明确阻力。'}",
             f"- 关键转折：{focus_card.get('key_turn') or chapter_goal or '在中后段给出足以改变后续行动的转折。'}",
@@ -267,6 +269,7 @@ class PromptBuilder:
         sections.append("\n".join([
             "【硬性写作规则】",
             "- 只输出正文，不要输出标题、说明、提纲、分析、标签或自我解释。",
+            *([f"- 正文篇幅尽量贴近 {target_words} 字，允许小幅浮动但不要明显过短。"] if target_words else []),
             "- 严格延续既有设定与稳定事实，禁止凭空改写人物关系、能力、地点规则和已发生事件。",
             "- 节奏遵循任务卡与微节拍，每个节拍必须落到可见动作、对话、心理反应或环境细节。",
             "- 不要用大段总结替代场景推进，不要把冲突轻易化解。",

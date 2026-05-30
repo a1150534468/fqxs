@@ -36,11 +36,13 @@ const streamStateBase = {
   startChapter: null,
   currentChapter: null,
   targetChapter: null,
+  targetWords: null,
   completedChapters: 0,
   error: null,
   sessionId: null,
   mode: null,
   runMode: 'single' as const,
+  fullAutoMode: false,
   stopRequested: false,
   lastSavedChapterId: null,
   lastSavedEventId: null,
@@ -475,6 +477,45 @@ describe('WorkspacePage', () => {
 
     expect(mockRefs.streamStartMock).not.toHaveBeenCalled();
     expect(mockRefs.messageWarningMock).toHaveBeenCalledWith('必须先完成本章修订才能继续。');
+  });
+
+  test('starts continuous generation with full-auto options', async () => {
+    renderWorkspace({
+      workbenchHighlights: {
+        ...workbenchHighlights,
+        workflow_gate: {
+          ...workbenchHighlights.workflow_gate!,
+          allowed: false,
+          status: 'blocked',
+          summary: '必须先完成本章修订才能继续。',
+          blocking_reasons: [
+            {
+              code: 'review_pending',
+              level: 'critical',
+              title: '待审',
+              detail: '上一章尚未审定。',
+            },
+          ],
+        },
+      },
+    });
+
+    fireEvent.click(requireButtonByText('开始持续迭代'));
+    await waitFor(() => {
+      expect(screen.getByText('全自动模式')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('switch'));
+    fireEvent.click(requireButtonByText('开始'));
+
+    expect(mockRefs.streamStartMock).toHaveBeenCalledWith(1, {
+      mode: 'generate',
+      runMode: 'continuous',
+      chapterNumber: 3,
+      targetChapter: 12,
+      targetWords: 3500,
+      chapterLimit: 10,
+      fullAutoMode: true,
+    });
   });
 
   test('starts single chapter generation when generate next is clicked', () => {

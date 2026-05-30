@@ -11,7 +11,7 @@ import {
 import { publishChapter, saveChapterReview, updateChapter } from '../../api/chapters';
 import { useChapterStream } from '../../hooks/useChapterStream';
 import { ChapterSidebar } from './ChapterSidebar';
-import { WritingCenter } from './WritingCenter';
+import { WritingCenter, type ContinuousStartOptions } from './WritingCenter';
 import { SettingsPanel } from './SettingsPanel';
 import { formatNumber } from './constants';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
@@ -106,16 +106,16 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     }
   }, [missingBookTitle]);
 
-  const handleStartContinuous = (targetChapter: number) => {
+  const handleStartContinuous = (options: ContinuousStartOptions) => {
     if (!selectedNovel) {
       message.warning('请先选择一本书');
       return;
     }
-    if (workflowGate && !workflowGate.allowed) {
+    if (workflowGate && !workflowGate.allowed && !options.fullAutoMode) {
       message.warning(workflowGate.summary || '当前工作流闸门未通过，暂时不能持续迭代');
       return;
     }
-    if (targetChapter < nextChapterNumber) {
+    if (options.targetChapter < nextChapterNumber) {
       message.warning(`目标章节不能小于第 ${nextChapterNumber} 章`);
       return;
     }
@@ -123,7 +123,10 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       mode: 'generate',
       runMode: 'continuous',
       chapterNumber: nextChapterNumber,
-      targetChapter,
+      targetChapter: options.targetChapter,
+      targetWords: options.targetWords,
+      chapterLimit: options.chapterLimit,
+      fullAutoMode: options.fullAutoMode,
     });
   };
 

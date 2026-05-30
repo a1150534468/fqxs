@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Input, InputNumber, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { LeftOutlined, PlayCircleOutlined, RightOutlined, StopOutlined } from '@ant-design/icons';
+import { Alert, Button, Empty, Input, InputNumber, Modal, Progress, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import { CheckCircleOutlined, LeftOutlined, PlayCircleOutlined, RightOutlined, StopOutlined } from '@ant-design/icons';
 import type { StreamState } from '../../hooks/useChapterStream';
 import type {
   Chapter,
@@ -9,6 +9,13 @@ import type {
 } from './types';
 
 const { Text } = Typography;
+
+export interface ContinuousStartOptions {
+  targetChapter: number;
+  targetWords: number;
+  chapterLimit: number;
+  fullAutoMode: boolean;
+}
 
 interface WritingCenterProps {
   surface?: 'cockpit' | 'dashboard' | 'intelligence';
@@ -20,7 +27,7 @@ interface WritingCenterProps {
   canNextChapter: boolean;
   onPrevChapter: () => void;
   onNextChapter: () => void;
-  onStartContinuous: (targetChapter: number) => void;
+  onStartContinuous: (options: ContinuousStartOptions) => void;
   onGenerateNext: () => void;
   onContinueCurrent: () => void;
   onRegenerateCurrent: () => void;
@@ -60,6 +67,9 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
   const [activeTab, setActiveTab] = useState<CenterTabKey>('stream');
   const [showStartModal, setShowStartModal] = useState(false);
   const [targetChapterDraft, setTargetChapterDraft] = useState<number | null>(null);
+  const [targetWordsDraft, setTargetWordsDraft] = useState<number | null>(3500);
+  const [chapterLimitDraft, setChapterLimitDraft] = useState<number | null>(22);
+  const [fullAutoModeDraft, setFullAutoModeDraft] = useState(false);
   const [draftContent, setDraftContent] = useState('');
   const [draftBaseline, setDraftBaseline] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
@@ -87,7 +97,10 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
 
   useEffect(() => {
     setTargetChapterDraft(defaultIterationTarget);
-  }, [defaultIterationTarget, novel?.id]);
+    setChapterLimitDraft(Math.min(Math.max(defaultIterationTarget - nextChapterNumber + 1, 1), 22));
+    setTargetWordsDraft(3500);
+    setFullAutoModeDraft(false);
+  }, [defaultIterationTarget, nextChapterNumber, novel?.id]);
 
   const selectedContent = selectedChapter?.final_content || selectedChapter?.raw_content || '';
   const contentDirty = draftContent !== draftBaseline;
@@ -130,11 +143,20 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
     : selectedChapter?.review_status === 'revise'
       ? '需修订'
       : '待审';
+  const selectedChapterFullAuto = Boolean(
+    selectedChapter?.generation_meta?.full_auto_mode
+    || selectedChapter?.generation_meta?.auto_review_skipped
+    || selectedChapter?.context_snapshot?.full_auto_mode,
+  );
   const actionLabel = modeLabel[streamState.mode || 'generate'];
 
   const streamPlaceholder = highlights?.focus_card?.mission || highlights?.recommended_focus
     || '选择一个章节后可查看正文，也可以直接生成下一章。';
   const loopStartChapter = streamState.startChapter ?? nextChapterNumber;
+  const effectiveTargetChapter = useMemo(() => {
+    if (!targetChapterDraft || !chapterLimitDraft) return null;
+    return Math.min(targetChapterDraft, nextChapterNumber + chapterLimitDraft - 1);
+  }, [chapterLimitDraft, nextChapterNumber, targetChapterDraft]);
 
   const continuousProgressPercent = useMemo(() => {
     if (streamState.runMode !== 'continuous' || !streamState.targetChapter) return 0;
@@ -152,12 +174,20 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
 
   const handleOpenStartModal = () => {
     setTargetChapterDraft(defaultIterationTarget);
+    setChapterLimitDraft(Math.min(Math.max(defaultIterationTarget - nextChapterNumber + 1, 1), 22));
+    setTargetWordsDraft(3500);
+    setFullAutoModeDraft(false);
     setShowStartModal(true);
   };
 
   const handleConfirmStart = () => {
-    if (!targetChapterDraft) return;
-    onStartContinuous(targetChapterDraft);
+    if (!targetChapterDraft || !targetWordsDraft || !chapterLimitDraft) return;
+    onStartContinuous({
+      targetChapter: targetChapterDraft,
+      targetWords: targetWordsDraft,
+      chapterLimit: chapterLimitDraft,
+      fullAutoMode: fullAutoModeDraft,
+    });
     setShowStartModal(false);
   };
 
@@ -296,6 +326,8 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                     迭代进度：{streamState.completedChapters} / {Math.max(streamState.targetChapter - loopStartChapter + 1, 0)}
                   </span>
                 ) : null}
+                {streamState.targetWords ? <span>每章目标：{streamState.targetWords.toLocaleString()} 字</span> : null}
+                {streamState.fullAutoMode ? <span>审阅策略：全自动免审</span> : null}
                 {selectedChapter ? (
                   <span>
                     人工稿：{savingDraft ? '保存中' : contentDirty ? '有未保存修改' : '已同步'}
@@ -307,6 +339,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                     预估修改率 {estimatedModificationRate}%
                   </span>
                 ) : null}
+                {selectedChapterFullAuto ? <span>来源：全自动免审章节</span> : null}
                 {streamState.error && <Text type="danger">{streamState.error}</Text>}
               </div>
             </div>
@@ -363,6 +396,8 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
                   已完成 {streamState.completedChapters} 章
+                  {streamState.targetWords ? `，每章约 ${streamState.targetWords.toLocaleString()} 字` : ''}
+                  {streamState.fullAutoMode ? '，本轮章节自动跳过人工审阅' : ''}
                   {streamState.stopRequested ? '，停止指令已发出，当前章收尾后结束' : ''}
                 </div>
               </div>
@@ -449,7 +484,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                         生成任务运行中，正文编辑暂时锁定，避免覆盖流式结果。
                       </div>
                     ) : null}
-                    {estimatedModificationRate != null && estimatedModificationRate < 15 ? (
+                    {!selectedChapterFullAuto && estimatedModificationRate != null && estimatedModificationRate < 15 ? (
                       <div className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
                         当前人工稿相对原稿的预估修改率为 {estimatedModificationRate}% ，低于 15%，发布前建议继续人工润色。
                       </div>
@@ -531,21 +566,30 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
         okText="开始"
         cancelText="取消"
         okButtonProps={{
-          disabled: !targetChapterDraft || targetChapterDraft < nextChapterNumber,
+          disabled: (
+            !targetChapterDraft
+            || targetChapterDraft < nextChapterNumber
+            || !targetWordsDraft
+            || targetWordsDraft < 500
+            || !chapterLimitDraft
+            || chapterLimitDraft < 1
+          ),
         }}
       >
         <div className="space-y-4 pt-2">
           <Alert
-            type="info"
+            type={fullAutoModeDraft ? 'success' : 'info'}
             showIcon
-            description="开始后会持续生成后续章节，直到你手动点停止，或者自动迭代到设定的目标章节。"
+            description={fullAutoModeDraft
+              ? '全自动模式开启后，本轮新生成章节会自动标记为免审通过；历史待审章节不会被改动。'
+              : '开始后会持续生成后续章节，直到你手动点停止，或者自动迭代到设定的目标章节。'}
           />
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
             <div>当前已写到：第 {novel.current_chapter ?? 0} 章</div>
             <div className="mt-1">本次将从：第 {nextChapterNumber} 章 开始连续生成</div>
           </div>
           <div>
-            <div className="mb-2 text-sm font-medium text-slate-700">自动停止章节</div>
+            <div className="mb-2 text-sm font-medium text-slate-700">目标章节</div>
             <InputNumber
               min={nextChapterNumber}
               max={9999}
@@ -556,6 +600,49 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
             <div className="mt-2 text-xs text-slate-400">
               达到目标章节后会自动停止；中途点“停止”则在当前章收尾后结束。
             </div>
+          </div>
+          <div>
+            <div className="mb-2 text-sm font-medium text-slate-700">每章目标字数</div>
+            <InputNumber
+              min={500}
+              max={12000}
+              step={100}
+              value={targetWordsDraft}
+              onChange={(value) => setTargetWordsDraft(typeof value === 'number' ? value : 3500)}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <div className="mb-2 text-sm font-medium text-slate-700">保护上限（本轮最多生成章节数）</div>
+            <InputNumber
+              min={1}
+              max={200}
+              value={chapterLimitDraft}
+              onChange={(value) => setChapterLimitDraft(typeof value === 'number' ? value : 1)}
+              className="w-full"
+            />
+            <div className="mt-2 text-xs text-slate-400">
+              {effectiveTargetChapter && effectiveTargetChapter < (targetChapterDraft || 0)
+                ? `受保护上限影响，本轮最多写到第 ${effectiveTargetChapter} 章。`
+                : '用于防止一次托管运行消耗过多章节额度。'}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3">
+            <div>
+              <div className="text-sm font-medium text-slate-700">全自动模式</div>
+              <div className="mt-1 text-xs leading-5 text-slate-400">
+                开启后，本轮新章节跳过人工审阅并与普通待审章节区分显示。
+              </div>
+            </div>
+            <Switch
+              checked={fullAutoModeDraft}
+              checkedChildren={<CheckCircleOutlined />}
+              onChange={setFullAutoModeDraft}
+            />
+          </div>
+          <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+            达到第 {effectiveTargetChapter ?? targetChapterDraft ?? nextChapterNumber} 章目标时自动停止。
+            {fullAutoModeDraft ? ' 本轮产出的章节将自动标记为全自动免审。' : ' 本轮章节仍进入人工审阅队列。'}
           </div>
         </div>
       </Modal>

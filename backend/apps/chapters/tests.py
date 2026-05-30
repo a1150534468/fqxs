@@ -411,6 +411,29 @@ class ChapterAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('at least 15%', response.data['error'])
 
+    @patch('apps.chapters.views.publish_chapter_async.delay')
+    def test_publish_allows_full_auto_chapter_without_manual_modification_rate(self, mock_delay):
+        mock_delay.return_value = SimpleNamespace(id='publish-auto-task')
+        self.chapter_draft.generation_meta = {
+            'full_auto_mode': True,
+            'auto_review_skipped': True,
+        }
+        self.chapter_draft.save(update_fields=['generation_meta', 'updated_at'])
+        ChapterReview.objects.create(
+            project=self.project,
+            chapter=self.chapter_draft,
+            reviewer=self.user,
+            status='approved',
+            review_notes='全自动模式跳过人工审阅。',
+            modification_rate=0,
+        )
+
+        response = self.client.post(self.publish_url, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['task_id'], 'publish-auto-task')
+        mock_delay.assert_called_once()
+
     def test_delete_chapter_soft_deletes_and_hides_resource(self):
         response = self.client.delete(self.detail_url)
 
@@ -601,6 +624,38 @@ class ChapterAPITest(TestCase):
         self.assertTrue(KnowledgeFact.objects.filter(project=self.project, chapter=chapter).exists())
         self.assertTrue(ForeshadowItem.objects.filter(project=self.project, introduced_in_chapter=chapter).exists())
         self.assertTrue(StyleProfile.objects.filter(project=self.project, profile_type='chapter_analysis').exists())
+
+    def test_generate_from_ws_full_auto_marks_review_approved(self):
+        response = self.client.post(
+            self.generate_from_ws_url,
+            {
+                'project_id': self.project.id,
+                'chapter_number': 10,
+                'chapter_title': '第十章',
+                'content': '全自动托管生成的新章节，继续推进主线。',
+                'generation_meta': {
+                    'task_type': 'chapter',
+                    'transport': 'websocket',
+                    'full_auto_mode': True,
+                    'target_words': 3500,
+                },
+                'context_snapshot': {
+                    'full_auto_mode': True,
+                    'review_strategy': 'full_auto_auto_approved',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        chapter = Chapter.objects.get(project=self.project, chapter_number=10)
+        self.assertTrue(chapter.generation_meta['full_auto_mode'])
+        self.assertTrue(chapter.generation_meta['auto_review_skipped'])
+        self.assertEqual(chapter.generation_meta['review_strategy'], 'full_auto_auto_approved')
+        self.assertIsNotNone(chapter.reviewed_at)
+        review = ChapterReview.objects.get(chapter=chapter)
+        self.assertEqual(review.status, 'approved')
+        self.assertIn('全自动模式', review.review_notes)
 
     def test_generate_from_ws_requires_owned_project(self):
         response = self.client.post(

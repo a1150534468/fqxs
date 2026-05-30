@@ -134,6 +134,14 @@ def _safe_int(value, default: int | None = None) -> int | None:
         return default
 
 
+def _safe_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _word_count(content: str) -> int:
     return len([char for char in content if not char.isspace()])
 
@@ -144,6 +152,19 @@ def _mode_label(mode: str) -> str:
         "continue": "续写",
         "regenerate": "重写",
     }.get(mode, "生成")
+
+
+def _full_auto_can_bypass_gate(workflow_gate: dict) -> bool:
+    blocking_reasons = workflow_gate.get("blocking_reasons") or []
+    review_gate_codes = {
+        "review_missing",
+        "review_pending",
+        "review_revise",
+        "low_modification_rate",
+    }
+    if not blocking_reasons:
+        return True
+    return all(reason.get("code") in review_gate_codes for reason in blocking_reasons)
 
 
 async def _iter_text_chunks(content: str, chunk_size: int = 12):
@@ -193,6 +214,13 @@ async def _resolve_target(payload: dict, token: str | None) -> dict:
     chapter_title = (payload.get("chapter_title") or "").strip() or f"第{chapter_number}章"
     current_content = payload.get("current_content") or ""
     continue_length = _safe_int(payload.get("continue_length"), 1200) or 1200
+    target_words = _safe_int(payload.get("target_words"), 3500) or 3500
+    target_words = max(500, min(12000, target_words))
+    chapter_limit = _safe_int(payload.get("chapter_limit"))
+    if run_mode == "continuous" and chapter_limit:
+        chapter_limit = max(1, min(200, chapter_limit))
+        target_chapter = min(target_chapter, chapter_number + chapter_limit - 1)
+    full_auto_mode = _safe_bool(payload.get("full_auto_mode"))
 
     return {
         "project_id": project_id,
@@ -204,6 +232,9 @@ async def _resolve_target(payload: dict, token: str | None) -> dict:
         "chapter_title": chapter_title,
         "current_content": current_content,
         "continue_length": continue_length,
+        "target_words": target_words,
+        "chapter_limit": chapter_limit,
+        "full_auto_mode": full_auto_mode,
     }
 
 
@@ -309,6 +340,9 @@ async def _run_generation_session(
     session_started_at = datetime.now()
     start_chapter = target["chapter_number"]
     target_chapter = target["target_chapter"]
+    target_words = target.get("target_words")
+    chapter_limit = target.get("chapter_limit")
+    full_auto_mode = bool(target.get("full_auto_mode"))
 
     await _safe_send(
         websocket,
@@ -325,6 +359,9 @@ async def _run_generation_session(
                 "mode": mode,
                 "run_mode": run_mode,
                 "target_chapter": target_chapter,
+                "target_words": target_words,
+                "chapter_limit": chapter_limit,
+                "full_auto_mode": full_auto_mode,
             },
             session_id,
         ),
@@ -364,28 +401,56 @@ async def _run_generation_session(
         context_snapshot["mode"] = mode
         context_snapshot["run_mode"] = run_mode
         context_snapshot["target_chapter"] = target_chapter
+        context_snapshot["target_words"] = target_words
+        context_snapshot["chapter_limit"] = chapter_limit
+        context_snapshot["full_auto_mode"] = full_auto_mode
+        context_snapshot["review_strategy"] = (
+            "full_auto_auto_approved" if full_auto_mode else "manual_review_required"
+        )
         context_snapshot["chapter_title"] = current_target["chapter_title"]
         workflow_gate = context_snapshot.get("workflow_gate") or {}
 
         if mode == "generate" and not workflow_gate.get("allowed", True):
-            stop_reason = "workflow_gate"
-            stop_message = workflow_gate.get("summary") or "工作流闸门未通过，当前生成已暂停。"
-            await _safe_send(
-                websocket,
-                _with_session(
-                    {
-                        "type": "log",
-                        "message": f"工作流闸门拦截：{stop_message}",
-                        "timestamp": _timestamp(),
-                        "chapter_number": current_chapter,
-                        "mode": mode,
-                        "run_mode": run_mode,
-                        "target_chapter": target_chapter,
-                    },
-                    session_id,
-                ),
-            )
-            break
+            if full_auto_mode and _full_auto_can_bypass_gate(workflow_gate):
+                workflow_gate["bypassed_by_full_auto"] = True
+                await _safe_send(
+                    websocket,
+                    _with_session(
+                        {
+                            "type": "log",
+                            "message": "全自动模式已开启，跳过人工审阅闸门并继续生成",
+                            "timestamp": _timestamp(),
+                            "chapter_number": current_chapter,
+                            "mode": mode,
+                            "run_mode": run_mode,
+                            "target_chapter": target_chapter,
+                            "target_words": target_words,
+                            "full_auto_mode": full_auto_mode,
+                        },
+                        session_id,
+                    ),
+                )
+            else:
+                stop_reason = "workflow_gate"
+                stop_message = workflow_gate.get("summary") or "工作流闸门未通过，当前生成已暂停。"
+                await _safe_send(
+                    websocket,
+                    _with_session(
+                        {
+                            "type": "log",
+                            "message": f"工作流闸门拦截：{stop_message}",
+                            "timestamp": _timestamp(),
+                            "chapter_number": current_chapter,
+                            "mode": mode,
+                            "run_mode": run_mode,
+                            "target_chapter": target_chapter,
+                            "target_words": target_words,
+                            "full_auto_mode": full_auto_mode,
+                        },
+                        session_id,
+                    ),
+                )
+                break
 
         gate_warnings = workflow_gate.get("warnings") or []
         if mode == "generate" and gate_warnings:
@@ -400,6 +465,8 @@ async def _run_generation_session(
                         "mode": mode,
                         "run_mode": run_mode,
                         "target_chapter": target_chapter,
+                        "target_words": target_words,
+                        "full_auto_mode": full_auto_mode,
                     },
                     session_id,
                 ),
@@ -415,6 +482,8 @@ async def _run_generation_session(
                     "mode": mode,
                     "run_mode": run_mode,
                     "target_chapter": target_chapter,
+                    "target_words": target_words,
+                    "full_auto_mode": full_auto_mode,
                     "status_kind": "chapter_start",
                 },
                 session_id,
@@ -433,6 +502,8 @@ async def _run_generation_session(
                     "mode": mode,
                     "run_mode": run_mode,
                     "target_chapter": target_chapter,
+                    "target_words": target_words,
+                    "full_auto_mode": full_auto_mode,
                 },
                 session_id,
             ),
@@ -459,6 +530,8 @@ async def _run_generation_session(
                                 "mode": mode,
                                 "run_mode": run_mode,
                                 "target_chapter": target_chapter,
+                                "target_words": target_words,
+                                "full_auto_mode": full_auto_mode,
                             },
                             session_id,
                         ),
@@ -477,6 +550,8 @@ async def _run_generation_session(
                                 "mode": mode,
                                 "run_mode": run_mode,
                                 "target_chapter": target_chapter,
+                                "target_words": target_words,
+                                "full_auto_mode": full_auto_mode,
                             },
                             session_id,
                         ),
@@ -498,6 +573,12 @@ async def _run_generation_session(
                         "mode": mode,
                         "run_mode": run_mode,
                         "target_chapter": target_chapter,
+                        "target_words": target_words,
+                        "chapter_limit": chapter_limit,
+                        "full_auto_mode": full_auto_mode,
+                        "review_strategy": (
+                            "full_auto_auto_approved" if full_auto_mode else "manual_review_required"
+                        ),
                     }
 
                     await _safe_send(
@@ -511,6 +592,8 @@ async def _run_generation_session(
                                 "mode": mode,
                                 "run_mode": run_mode,
                                 "target_chapter": target_chapter,
+                                "target_words": target_words,
+                                "full_auto_mode": full_auto_mode,
                             },
                             session_id,
                         ),
@@ -555,6 +638,8 @@ async def _run_generation_session(
                                 "mode": mode,
                                 "run_mode": run_mode,
                                 "target_chapter": target_chapter,
+                                "target_words": target_words,
+                                "full_auto_mode": full_auto_mode,
                                 "completed_chapters": completed_chapters,
                                 "save_event_id": save_event_id,
                             },
@@ -572,6 +657,8 @@ async def _run_generation_session(
                                 "mode": mode,
                                 "run_mode": run_mode,
                                 "target_chapter": target_chapter,
+                                "target_words": target_words,
+                                "full_auto_mode": full_auto_mode,
                             },
                             session_id,
                         ),
@@ -630,6 +717,8 @@ async def _run_generation_session(
                 "mode": mode,
                 "run_mode": run_mode,
                 "target_chapter": target_chapter,
+                "target_words": target_words,
+                "full_auto_mode": full_auto_mode,
                 "completed_chapters": completed_chapters,
                 "stop_reason": stop_reason,
                 "message": final_message,

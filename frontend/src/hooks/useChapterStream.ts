@@ -13,11 +13,13 @@ export interface StreamState {
   startChapter: number | null;
   currentChapter: number | null;
   targetChapter: number | null;
+  targetWords: number | null;
   completedChapters: number;
   error: string | null;
   sessionId: string | null;
   mode: ChapterStreamMode | null;
   runMode: ChapterStreamRunMode;
+  fullAutoMode: boolean;
   stopRequested: boolean;
   lastSavedChapterId: number | null;
   lastSavedEventId: string | null;
@@ -32,6 +34,9 @@ export interface StartStreamOptions {
   runMode?: ChapterStreamRunMode;
   chapterNumber?: number | null;
   targetChapter?: number | null;
+  targetWords?: number | null;
+  fullAutoMode?: boolean;
+  chapterLimit?: number | null;
   chapterTitle?: string | null;
   currentContent?: string;
   continueLength?: number;
@@ -49,11 +54,13 @@ const DEFAULT_STATE = (): StreamState => ({
   startChapter: null,
   currentChapter: null,
   targetChapter: null,
+  targetWords: null,
   completedChapters: 0,
   error: null,
   sessionId: null,
   mode: null,
   runMode: 'single',
+  fullAutoMode: false,
   stopRequested: false,
   lastSavedChapterId: null,
   lastSavedEventId: null,
@@ -93,8 +100,10 @@ function setEntryState(projectId: number, patch: Partial<StreamState>) {
     || previousState.mode !== entry.state.mode
     || previousState.runMode !== entry.state.runMode
     || previousState.targetChapter !== entry.state.targetChapter
+    || previousState.targetWords !== entry.state.targetWords
     || previousState.completedChapters !== entry.state.completedChapters
     || previousState.sessionId !== entry.state.sessionId
+    || previousState.fullAutoMode !== entry.state.fullAutoMode
   ) {
     notifyRegistryListeners();
   }
@@ -189,6 +198,8 @@ export function useChapterStream(projectId: number | null) {
     const runMode = options?.runMode ?? 'single';
     const currentChapter = options?.chapterNumber ?? null;
     const targetChapter = options?.targetChapter ?? currentChapter;
+    const targetWords = options?.targetWords ?? null;
+    const fullAutoMode = Boolean(options?.fullAutoMode);
     setEntryState(pid, {
       ...DEFAULT_STATE(),
       isRunning: true,
@@ -198,6 +209,8 @@ export function useChapterStream(projectId: number | null) {
       startChapter: currentChapter,
       currentChapter,
       targetChapter: targetChapter ?? null,
+      targetWords,
+      fullAutoMode,
     });
 
     const ws = new WebSocket(`${WS_BASE}/ws/generate-chapter`);
@@ -215,6 +228,9 @@ export function useChapterStream(projectId: number | null) {
         run_mode: runMode,
         chapter_number: options?.chapterNumber ?? undefined,
         target_chapter: options?.targetChapter ?? undefined,
+        target_words: targetWords ?? undefined,
+        full_auto_mode: fullAutoMode,
+        chapter_limit: options?.chapterLimit ?? undefined,
         chapter_title: options?.chapterTitle ?? undefined,
         current_content: options?.currentContent ?? '',
         continue_length: options?.continueLength ?? undefined,
@@ -243,13 +259,21 @@ export function useChapterStream(projectId: number | null) {
         const messageTargetChapter = typeof msg.target_chapter === 'number'
           ? msg.target_chapter
           : streamMap.get(pid)?.state.targetChapter;
+        const messageTargetWords = typeof msg.target_words === 'number'
+          ? msg.target_words
+          : streamMap.get(pid)?.state.targetWords;
+        const messageFullAutoMode = typeof msg.full_auto_mode === 'boolean'
+          ? msg.full_auto_mode
+          : streamMap.get(pid)?.state.fullAutoMode;
 
         if (msg.type === 'chunk') {
           setEntryState(pid, {
             currentChapter: messageChapter ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
           });
           appendStreamText(pid, msg.content);
@@ -257,8 +281,10 @@ export function useChapterStream(projectId: number | null) {
           setEntryState(pid, {
             currentChapter: messageChapter ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
           });
           appendLog(pid, msg.message, msg.timestamp);
@@ -266,8 +292,10 @@ export function useChapterStream(projectId: number | null) {
           setEntryState(pid, {
             currentChapter: messageChapter ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
           });
           if (msg.status_kind === 'chapter_start' && typeof messageChapter === 'number') {
@@ -278,8 +306,10 @@ export function useChapterStream(projectId: number | null) {
           setEntryState(pid, {
             currentChapter: messageChapter ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
             completedChapters: typeof msg.completed_chapters === 'number'
               ? msg.completed_chapters
@@ -310,9 +340,11 @@ export function useChapterStream(projectId: number | null) {
             isRunning: false,
             currentChapter: msg.chapter_number ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             error: null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
             completedChapters: typeof msg.completed_chapters === 'number'
               ? msg.completed_chapters
@@ -330,8 +362,10 @@ export function useChapterStream(projectId: number | null) {
             error: msg.message,
             currentChapter: messageChapter ?? null,
             targetChapter: messageTargetChapter ?? null,
+            targetWords: messageTargetWords ?? null,
             mode: messageMode,
             runMode: messageRunMode,
+            fullAutoMode: Boolean(messageFullAutoMode),
             startChapter: streamMap.get(pid)?.state.startChapter ?? currentChapter,
             stopRequested: false,
           });

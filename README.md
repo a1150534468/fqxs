@@ -77,12 +77,21 @@
 
 - 持续迭代到目标章节
 
+持续迭代启动时支持本轮运行参数：
+
+- 每章目标字数：写入 WebSocket `target_words`，并进入章节提示词与生成元数据
+- 保护上限：写入 WebSocket `chapter_limit`，防止一次托管运行生成过多章节
+- 全自动模式：写入 WebSocket `full_auto_mode`，本轮新章节自动跳过人工审阅并标记为免审通过
+
 前端通过 `useChapterStream` 连接 `ws://.../ws/generate-chapter`，可以显示：
 
 - 实时流式正文
 - 流程日志
 - 连续生成进度
 - 最近保存章节
+- 每章目标字数和全自动免审状态
+
+全自动模式只影响本轮新生成章节。历史章节如果仍是 `pending` 或 `revise`，不会被批量改状态；新章节会在 `generation_meta` / `context_snapshot` 中记录 `full_auto_mode`、`auto_review_skipped` 和 `review_strategy`，用于前端显示“免审/自动”标签。
 
 ### 2. 人工正文编辑
 
@@ -380,6 +389,8 @@ celery -A celery_app beat -l info
 - `POST /api/chapters/:id/review/`
 - `POST /api/chapters/:id/publish/`
 - `POST /api/chapters/generate-from-ws/`
+
+`generate-from-ws` 保存 WebSocket 生成结果时会同步工作流资产。若请求中的 `generation_meta.full_auto_mode` 或 `context_snapshot.full_auto_mode` 为 true，章节审阅记录会自动标记为 `approved`，并保留“全自动免审”元数据；普通生成仍保持 `pending`，等待人工审阅。
 
 ### 统计与任务
 
