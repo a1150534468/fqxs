@@ -807,47 +807,28 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 px-4 py-4 sm:px-6 sm:py-4">
-        <div className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col gap-4">
-          <div className={`grid min-h-0 flex-1 gap-4 ${
-            activeSurface === 'intelligence'
-              ? 'xl:grid-cols-[15rem_minmax(0,1.42fr)_26rem]'
-              : activeSurface === 'dashboard'
-                ? 'xl:grid-cols-[15rem_minmax(0,1.18fr)_24rem]'
-                : 'xl:grid-cols-[15rem_minmax(0,1.65fr)_26rem]'
-          }`}>
-            {chapterRail}
-            {activeSurface === 'dashboard' ? (
-              <>
-                {dashboardPanel}
-                {intelligencePanel}
-              </>
-            ) : activeSurface === 'intelligence' ? (
-              <>
-                {intelligencePanel}
-                {writingCenterPanel}
-              </>
-            ) : (
-              <>
-                {writingCenterPanel}
-                {intelligencePanel}
-              </>
-            )}
-          </div>
+      <div className="min-h-0 flex-1 px-4 py-4 sm:px-6 sm:py-4">
+        <div className="mx-auto flex h-full w-full max-w-[1800px] min-h-0">
+          <PanelGroup direction="horizontal" className="min-h-0 w-full gap-0">
+            {/* Left: chapter rail */}
+            <Panel defaultSize={16} minSize={12} maxSize={28} className="min-h-0">
+              {chapterRail}
+            </Panel>
 
-          {activeSurface !== 'dashboard' ? (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-secondary)]">
-                已发布 <span className="ml-2 font-semibold text-[color:var(--app-text-primary)]">{sidebarStats.published}</span>
-              </div>
-              <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-secondary)]">
-                草稿 <span className="ml-2 font-semibold text-[color:var(--app-text-primary)]">{sidebarStats.draft}</span>
-              </div>
-              <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-secondary)]">
-                待检查 <span className="ml-2 font-semibold text-[color:var(--app-text-primary)]">{sidebarStats.flagged}</span>
-              </div>
-            </div>
-          ) : null}
+            <PanelResizeHandle className="workspace-resize-handle mx-1" />
+
+            {/* Center panel */}
+            <Panel defaultSize={55} minSize={35} className="min-h-0">
+              {activeSurface === 'dashboard' ? dashboardPanel : writingCenterPanel}
+            </Panel>
+
+            <PanelResizeHandle className="workspace-resize-handle mx-1" />
+
+            {/* Right panel */}
+            <Panel defaultSize={29} minSize={20} maxSize={40} className="min-h-0">
+              {activeSurface === 'intelligence' ? writingCenterPanel : intelligencePanel}
+            </Panel>
+          </PanelGroup>
         </div>
       </div>
     </div>
