@@ -819,7 +819,11 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
             {/* Center panel */}
             <Panel defaultSize={55} minSize={35} className="min-h-0">
-              {activeSurface === 'dashboard' ? dashboardPanel : writingCenterPanel}
+              {activeSurface === 'dashboard'
+                ? dashboardPanel
+                : activeSurface === 'intelligence'
+                  ? intelligencePanel
+                  : writingCenterPanel}
             </Panel>
 
             <PanelResizeHandle className="workspace-resize-handle mx-1" />
