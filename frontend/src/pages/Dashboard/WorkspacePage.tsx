@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { message, Button, Progress, Tag, Alert } from 'antd';
+import { message, Button, Alert } from 'antd';
 import {
   ArrowLeftOutlined,
   DeploymentUnitOutlined,
@@ -31,34 +31,7 @@ import type {
   WorkbenchHighlights,
 } from './types';
 
-type WorkspaceSurface = 'cockpit' | 'dashboard' | 'intelligence';
 type SurfaceTone = 'default' | 'warning' | 'danger' | 'accent';
-
-const WORKSPACE_SURFACES: Array<{
-  id: WorkspaceSurface;
-  label: string;
-  short: string;
-  description: string;
-}> = [
-  {
-    id: 'cockpit',
-    label: '写作主航道',
-    short: '驾驶舱',
-    description: '正文推进、流式写作与审阅协同',
-  },
-  {
-    id: 'dashboard',
-    label: '项目脉冲',
-    short: '仪表盘',
-    description: '先看进度、主线与风险，再决定下一步',
-  },
-  {
-    id: 'intelligence',
-    label: '设定与情报',
-    short: '情报库',
-    description: '把设定、审阅、伏笔和章节资产放大查看',
-  },
-];
 
 const toneClassMap: Record<SurfaceTone, string> = {
   default: 'border-[var(--app-border)] bg-[var(--app-surface)]',
@@ -72,12 +45,6 @@ const formatWorkflowStatus = (status?: string) => {
   if (status === 'warning') return '提醒';
   if (status === 'ok') return '通过';
   return '待判定';
-};
-
-const formatReviewStatus = (status?: 'pending' | 'approved' | 'revise') => {
-  if (status === 'approved') return '已定稿';
-  if (status === 'revise') return '需修订';
-  return '待审';
 };
 
 
@@ -130,7 +97,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 }) => {
   const { state: streamState, start, stop } = useChapterStream(selectedNovel?.id ?? null);
   const navigate = useNavigate();
-  const [activeSurface, setActiveSurface] = useState<WorkspaceSurface>('cockpit');
   const selectedChapter = selectedChapters.find((chapter) => chapter.id === selectedChapterId) ?? null;
   const selectedChapterIndex = selectedChapters.findIndex((chapter) => chapter.id === selectedChapterId);
   const nextChapterNumber = (selectedNovel?.current_chapter ?? 0) + 1;
@@ -292,7 +258,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     streamState.lastSavedEventId,
   ]);
 
-  const selectedReviewLabel = formatReviewStatus(selectedChapter?.review_status);
   const displayTitle = selectedNovel?.title?.trim() || '未命名项目';
   const heroDescription = selectedNovel?.synopsis?.trim()
     || workbenchHighlights?.focus_card?.mission
@@ -472,7 +437,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       className="min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] shadow-[var(--app-shadow-sm)]"
     >
       <WritingCenter
-        surface={activeSurface}
         novel={selectedNovel}
         selectedChapter={selectedChapter}
         streamState={streamState}
@@ -518,256 +482,12 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
         onSaveChapterReview={handleSaveChapterReview}
         workbenchHighlights={workbenchHighlights}
         knowledgeGraph={knowledgeGraph}
+        focusSignals={focusSignals}
+        dashboardPulse={dashboardPulse}
+        aggregatedStats={aggregatedStats}
       />
     </aside>
   );
-  const dashboardPanel = (
-    <main
-      aria-label="项目脉冲面板"
-      className="min-w-0 overflow-y-auto rounded-[var(--app-radius-shell)] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]"
-    >
-      <div className="space-y-4">
-        {/* Hero section — moved from header */}
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(18rem,30rem)]">
-          <section className="rounded-[var(--app-radius-shell)] border border-[var(--app-border)] bg-[color:var(--app-surface)] px-5 py-4 shadow-[var(--app-shadow-sm)]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Tag color="blue" className="mr-0">{selectedNovel?.genre || '未分类'}</Tag>
-                  {workbenchHighlights?.active_storyline?.name ? (
-                    <Tag color="cyan" className="mr-0">{workbenchHighlights.active_storyline.name}</Tag>
-                  ) : null}
-                  {workflowGate ? (
-                    <Tag
-                      color={workflowGate.status === 'blocked' ? 'red' : workflowGate.status === 'warning' ? 'orange' : 'green'}
-                      className="mr-0"
-                    >
-                      工作流 {formatWorkflowStatus(workflowGate.status)}
-                    </Tag>
-                  ) : null}
-                </div>
-                <h1 className="mt-3 text-[1.5rem] font-semibold tracking-[-0.025em] text-[color:var(--app-text-primary)]">
-                  {displayTitle}
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-[color:var(--app-text-muted)]">
-                  {heroDescription}
-                </p>
-              </div>
-              <div className="grid min-w-[14rem] gap-2 sm:grid-cols-2 lg:w-[16rem] lg:grid-cols-1">
-                <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-3 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--app-text-muted)]">当前章节</div>
-                  <div className="mt-1 text-base font-semibold text-[color:var(--app-text-primary)]">
-                    {selectedChapter ? `第 ${selectedChapter.chapter_number} 章` : `第 ${nextChapterNumber} 章`}
-                  </div>
-                  <div className="mt-1 text-xs text-[color:var(--app-text-muted)]">
-                    {selectedChapter?.title || '当前未锁定具体章节'}
-                  </div>
-                </div>
-                <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-3 py-3">
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-[color:var(--app-text-muted)]">
-                    <span>总进度</span>
-                    <span>{aggregatedStats.completionRate}%</span>
-                  </div>
-                  <Progress percent={aggregatedStats.completionRate} showInfo={false} strokeColor="#2563eb" trailColor="#e5e7eb" />
-                  <div className="mt-2 text-xs text-[color:var(--app-text-muted)]">
-                    审阅状态：{selectedReviewLabel}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-          <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
-            {focusSignals.slice(0, 4).map((item) => (
-              <div
-                key={item.key}
-                className={`rounded-[16px] border px-4 py-3 shadow-[var(--app-shadow-sm)] ${toneClassMap[item.tone]}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">{item.title}</div>
-                    <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">{item.value}</div>
-                  </div>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[color:var(--app-surface-subtle)] text-[color:var(--app-text-secondary)]">
-                    {item.icon}
-                  </div>
-                </div>
-                <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.detail}</div>
-              </div>
-            ))}
-          </section>
-        </div>
-        <section className="rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-shell)] p-4">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">项目脉冲</div>
-          <div className="mt-2 text-lg font-semibold text-[color:var(--app-text-primary)]">
-            {workbenchHighlights?.recommended_focus || '当前优先任务还未形成，建议先锁定本章目标。'}
-          </div>
-          <div className="mt-2 grid gap-3 md:grid-cols-3">
-            <div className="rounded-[16px] bg-white px-4 py-3 shadow-[var(--app-shadow-sm)]">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">工作流</div>
-              <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">
-                {workflowGate ? formatWorkflowStatus(workflowGate.status) : '待判定'}
-              </div>
-              <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                {workflowGate?.summary || '当前无阻塞，可继续推进正文或审阅。'}
-              </div>
-            </div>
-            <div className="rounded-[16px] bg-white px-4 py-3 shadow-[var(--app-shadow-sm)]">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">当前主线</div>
-              <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">
-                {workbenchHighlights?.active_storyline?.name || '主线建立中'}
-              </div>
-              <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                {workbenchHighlights?.active_storyline?.description || '继续生成与整理后，这里会显示当前主线压力。'}
-              </div>
-            </div>
-            <div className="rounded-[16px] bg-white px-4 py-3 shadow-[var(--app-shadow-sm)]">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">下一行动</div>
-              <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">
-                {selectedChapter ? `处理第 ${selectedChapter.chapter_number} 章` : `准备第 ${nextChapterNumber} 章`}
-              </div>
-              <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                {workbenchHighlights?.focus_card?.mission || '没有锁定章节时，优先确定当前推进目标。'}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(18rem,22rem)]">
-          <section className="space-y-4">
-            <div className="rounded-[18px] border border-[var(--app-border)] bg-white p-4 shadow-[var(--app-shadow-sm)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">最近章节</div>
-                  <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">最近推进与章节状态</div>
-                </div>
-                <Tag color="blue" className="mr-0">{dashboardPulse.latestChapters.length} 章</Tag>
-              </div>
-              <div className="mt-3 space-y-3">
-                {dashboardPulse.latestChapters.length ? dashboardPulse.latestChapters.map((chapter) => (
-                  <div key={chapter.id} className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-[color:var(--app-text-primary)]">
-                          第 {chapter.chapter_number} 章 {chapter.title || ''}
-                        </div>
-                        <div className="mt-1 text-xs text-[color:var(--app-text-muted)]">
-                          {chapter.word_count || 0} 字 · {chapter.review_status === 'approved' ? '已定稿' : chapter.review_status === 'revise' ? '需修订' : '待审'}
-                        </div>
-                      </div>
-                      <Tag color={chapter.consistency_status?.status === 'ok' ? 'green' : chapter.consistency_status?.status ? 'orange' : 'default'} className="mr-0">
-                        {chapter.consistency_status?.status || '未检'}
-                      </Tag>
-                    </div>
-                    {chapter.summary ? (
-                      <div className="mt-2 line-clamp-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                        {chapter.summary}
-                      </div>
-                    ) : null}
-                  </div>
-                )) : (
-                  <div className="text-sm text-[color:var(--app-text-muted)]">暂无章节数据。</div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[18px] border border-[var(--app-border)] bg-white p-4 shadow-[var(--app-shadow-sm)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">主线与情节点</div>
-                  <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">后续推进窗口</div>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                <div className="space-y-3">
-                  {(dashboardPulse.activeStorylines.length ? dashboardPulse.activeStorylines : storylines.slice(0, 3)).map((item) => (
-                    <div key={item.id} className="rounded-[16px] bg-[color:var(--app-shell)] px-4 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-medium text-[color:var(--app-text-primary)]">{item.name}</div>
-                        <Tag color={item.status === 'active' ? 'green' : 'default'} className="mr-0">
-                          {item.status}
-                        </Tag>
-                      </div>
-                      <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                        {item.description || '暂无主线描述'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-3">
-                  {dashboardPulse.nextMilestones.length ? dashboardPulse.nextMilestones.map((point) => (
-                    <div key={point.id} className="rounded-[16px] border border-[var(--app-border)] px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-[color:var(--app-text-primary)]">
-                          第 {point.chapter_number} 章
-                        </div>
-                        <Tag color="purple" className="mr-0">
-                          张力 {point.tension_level}
-                        </Tag>
-                      </div>
-                      <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                        {point.description}
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="rounded-[16px] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-muted)]">
-                      暂无后续情节点，建议先补主线推进与情节弧。
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <aside className="space-y-4">
-            <div className="rounded-[18px] border border-[var(--app-border)] bg-white p-4 shadow-[var(--app-shadow-sm)]">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">风险队列</div>
-              <div className="mt-3 space-y-3">
-                {workbenchHighlights?.continuity_alerts?.length ? workbenchHighlights.continuity_alerts.slice(0, 4).map((item) => (
-                  <div key={`${item.level}-${item.title}`} className="rounded-[16px] border border-[var(--app-border)] px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Tag color={item.level === 'critical' ? 'red' : item.level === 'warning' ? 'orange' : 'blue'} className="mr-0">
-                        {item.level}
-                      </Tag>
-                      <div className="text-sm font-medium text-[color:var(--app-text-primary)]">{item.title}</div>
-                    </div>
-                    <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.detail}</div>
-                  </div>
-                )) : (
-                  <div className="rounded-[16px] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-muted)]">
-                    暂无连续性风险。
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[18px] border border-[var(--app-border)] bg-white p-4 shadow-[var(--app-shadow-sm)]">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">伏笔回收</div>
-              <div className="mt-3 space-y-3">
-                {dashboardPulse.openForeshadow.length ? dashboardPulse.openForeshadow.map((item) => (
-                  <div key={item.id} className="rounded-[16px] bg-[color:var(--app-shell)] px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-[color:var(--app-text-primary)]">{item.title}</div>
-                      <Tag color="gold" className="mr-0">
-                        {item.expected_payoff_chapter || '--'} 章
-                      </Tag>
-                    </div>
-                    <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">
-                      {item.description || '暂无描述'}
-                    </div>
-                  </div>
-                )) : (
-                  <div className="rounded-[16px] bg-[color:var(--app-shell)] px-4 py-3 text-sm text-[color:var(--app-text-muted)]">
-                    当前没有待回收伏笔。
-                  </div>
-                )}
-              </div>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </main>
-  );
-
   return (
     <div className="flex h-screen flex-col bg-[color:var(--app-page-bg)] text-[color:var(--app-text-primary)]">
       {missingBookTitle && (
@@ -824,28 +544,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
               </div>
             ))}
           </div>
-
-          {/* Right: surface switcher */}
-          <div className="flex shrink-0 items-center gap-0.5 rounded-[12px] border border-white/10 bg-white/10 p-1">
-            {WORKSPACE_SURFACES.map((surface) => {
-              const active = surface.id === activeSurface;
-              return (
-                <button
-                  key={surface.id}
-                  type="button"
-                  title={surface.description}
-                  onClick={() => setActiveSurface(surface.id)}
-                  className={`rounded-[8px] px-3 py-1 text-sm font-medium transition-all duration-150 ${
-                    active
-                      ? 'bg-white/15 text-white shadow-sm'
-                      : 'text-white/55 hover:text-white/85'
-                  }`}
-                >
-                  {surface.short}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </header>
 
@@ -861,18 +559,14 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
             {/* Center panel */}
             <Panel defaultSize={55} minSize={35} className="min-h-0">
-              {activeSurface === 'dashboard'
-                ? dashboardPanel
-                : activeSurface === 'intelligence'
-                  ? intelligencePanel
-                  : writingCenterPanel}
+              {writingCenterPanel}
             </Panel>
 
             <PanelResizeHandle className="workspace-resize-handle mx-1" />
 
             {/* Right panel */}
             <Panel defaultSize={29} minSize={20} maxSize={40} className="min-h-0">
-              {activeSurface === 'intelligence' ? writingCenterPanel : intelligencePanel}
+              {intelligencePanel}
             </Panel>
           </PanelGroup>
         </div>

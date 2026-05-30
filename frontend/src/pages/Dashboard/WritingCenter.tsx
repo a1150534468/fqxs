@@ -11,6 +11,7 @@ import type {
 const { Text } = Typography;
 
 interface WritingCenterProps {
+  surface?: 'cockpit' | 'dashboard' | 'intelligence';
   novel: Novel | null;
   selectedChapter: Chapter | null;
   streamState: StreamState;
@@ -39,9 +40,8 @@ const modeLabel = {
 
 type CenterTabKey = 'stream' | 'manuscript' | 'logs';
 
-const centerPanelHeightClass = 'h-[min(34rem,calc(100vh-24rem))] min-h-[20rem]';
-
 export const WritingCenter: React.FC<WritingCenterProps> = ({
+  surface = 'cockpit',
   novel,
   selectedChapter,
   streamState,
@@ -147,6 +147,13 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
     streamState.runMode,
     streamState.targetChapter,
   ]);
+  const isCockpit = surface === 'cockpit';
+  const isIntelligence = surface === 'intelligence';
+  const panelBodyClass = isCockpit
+    ? 'min-h-[34rem] h-[calc(100vh-9.5rem)]'
+    : isIntelligence
+      ? 'min-h-[28rem] h-[calc(100vh-15.75rem)]'
+      : 'min-h-[27rem] h-[calc(100vh-16.5rem)]';
 
   const handleOpenStartModal = () => {
     setTargetChapterDraft(defaultIterationTarget);
@@ -218,136 +225,139 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
 
   if (!novel) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-400">
+      <div className="flex h-full items-center justify-center bg-[color:var(--app-shell)] text-sm text-slate-400">
         请先在首页选择一本书
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-slate-100 px-5 py-4">
+    <div className="flex h-full min-h-0 flex-col bg-[color:var(--app-shell)]">
+      <div className={`border-b border-[var(--app-divider)] bg-[color:var(--app-surface)] px-5 ${isCockpit ? 'py-3' : 'py-3.5'}`}>
         {workflowGate && workflowGate.status !== 'ok' ? (
           <Alert
             type={workflowGateAlertType}
             showIcon
-            className="mb-4"
-            message={workflowGate.status === 'blocked' ? '工作流闸门未通过' : '工作流提醒'}
+            className={isCockpit ? 'mb-3' : 'mb-4'}
+            title={workflowGate.status === 'blocked' ? '工作流闸门未通过' : '工作流提醒'}
             description={workflowGate.summary}
           />
         ) : null}
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Writing Desk</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-semibold text-slate-800">
-                {selectedChapter
-                  ? `第 ${selectedChapter.chapter_number} 章 ${selectedChapter.title || ''}`.trim()
-                  : `${novel.title} 工作台`}
-              </h2>
-              {selectedChapter ? (
-                <Space size={[6, 6]} wrap>
-                  <Button
-                    size="small"
-                    icon={<LeftOutlined />}
-                    disabled={!canPrevChapter || streamState.isRunning}
-                    onClick={onPrevChapter}
-                  >
-                    上一章
-                  </Button>
-                  <Button
-                    size="small"
-                    icon={<RightOutlined />}
-                    disabled={!canNextChapter || streamState.isRunning}
-                    onClick={onNextChapter}
-                  >
-                    下一章
-                  </Button>
-                </Space>
-              ) : null}
-              <Tag color={streamState.isRunning ? 'processing' : 'default'}>
-                {streamState.isRunning
-                  ? (
-                    streamState.runMode === 'continuous'
-                      ? `持续迭代中 · 第 ${streamState.currentChapter ?? highlights?.focus_chapter_number ?? '?'} 章`
-                      : `正在${actionLabel}第 ${streamState.currentChapter ?? highlights?.focus_chapter_number ?? '?'} 章`
-                  )
-                  : '待命'}
-              </Tag>
-              {highlights?.nearest_plot_point && (
-                <Tag color="purple">
-                  最近情节点：第 {highlights.nearest_plot_point.chapter_number} 章
+        <div className={`flex flex-col ${isCockpit ? 'gap-2.5' : 'gap-3.5'}`}>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Autopilot</div>
+              <div className={`mt-1.5 flex flex-wrap items-center gap-2 ${isCockpit ? 'xl:gap-3' : ''}`}>
+                <h2 className={`${isCockpit ? 'text-[1rem]' : 'text-[1.05rem]'} font-semibold text-slate-800`}>
+                  {selectedChapter
+                    ? `第 ${selectedChapter.chapter_number} 章 ${selectedChapter.title || ''}`.trim()
+                    : `${novel.title} · 全托管驾驶`}
+                </h2>
+                {selectedChapter ? (
+                  <Space size={[6, 6]} wrap>
+                    <Button
+                      size="small"
+                      icon={<LeftOutlined />}
+                      disabled={!canPrevChapter || streamState.isRunning}
+                      onClick={onPrevChapter}
+                    >
+                      上一章
+                    </Button>
+                    <Button
+                      size="small"
+                      icon={<RightOutlined />}
+                      disabled={!canNextChapter || streamState.isRunning}
+                      onClick={onNextChapter}
+                    >
+                      下一章
+                    </Button>
+                  </Space>
+                ) : null}
+                <Tag color={streamState.isRunning ? 'processing' : 'default'}>
+                  {streamState.isRunning
+                    ? (
+                      streamState.runMode === 'continuous'
+                        ? `持续迭代中 · 第 ${streamState.currentChapter ?? highlights?.focus_chapter_number ?? '?'} 章`
+                        : `正在${actionLabel}第 ${streamState.currentChapter ?? highlights?.focus_chapter_number ?? '?'} 章`
+                    )
+                    : '待命'}
                 </Tag>
-              )}
+                {highlights?.nearest_plot_point && (
+                  <Tag color="purple">
+                    最近情节点：第 {highlights.nearest_plot_point.chapter_number} 章
+                  </Tag>
+                )}
+              </div>
+              <div className={`mt-1.5 flex flex-wrap items-center ${isCockpit ? 'gap-x-4 gap-y-2 text-[13px]' : 'gap-3 text-sm'} text-slate-500`}>
+                <span>
+                  目标章节：
+                  {streamState.runMode === 'continuous' && streamState.targetChapter
+                    ? streamState.targetChapter
+                    : (highlights?.focus_chapter_number ?? novel.current_chapter ?? 1)}
+                </span>
+                <span>当前正文：{selectedContent ? `${selectedContent.length.toLocaleString()} 字` : '暂无正文'}</span>
+                {streamState.runMode === 'continuous' && streamState.targetChapter ? (
+                  <span>
+                    迭代进度：{streamState.completedChapters} / {Math.max(streamState.targetChapter - loopStartChapter + 1, 0)}
+                  </span>
+                ) : null}
+                {selectedChapter ? (
+                  <span>
+                    人工稿：{savingDraft ? '保存中' : contentDirty ? '有未保存修改' : '已同步'}
+                  </span>
+                ) : null}
+                {selectedChapter ? <span>审阅状态：{reviewLabel}</span> : null}
+                {estimatedModificationRate != null ? (
+                  <span>
+                    预估修改率 {estimatedModificationRate}%
+                  </span>
+                ) : null}
+                {streamState.error && <Text type="danger">{streamState.error}</Text>}
+              </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-              <span>
-                目标章节：
-                {streamState.runMode === 'continuous' && streamState.targetChapter
-                  ? streamState.targetChapter
-                  : (highlights?.focus_chapter_number ?? novel.current_chapter ?? 1)}
-              </span>
-              <span>当前正文：{selectedContent ? `${selectedContent.length.toLocaleString()} 字` : '暂无正文'}</span>
-              {streamState.runMode === 'continuous' && streamState.targetChapter ? (
-                <span>
-                  迭代进度：{streamState.completedChapters} / {Math.max(streamState.targetChapter - loopStartChapter + 1, 0)}
-                </span>
-              ) : null}
-              {selectedChapter ? (
-                <span>
-                  人工稿：{savingDraft ? '保存中' : contentDirty ? '有未保存修改' : '已同步'}
-                </span>
-              ) : null}
-              {selectedChapter ? <span>审阅状态：{reviewLabel}</span> : null}
-              {estimatedModificationRate != null ? (
-                <span>
-                  预估修改率 {estimatedModificationRate}%
-                </span>
-              ) : null}
-              {streamState.error && <Text type="danger">{streamState.error}</Text>}
-            </div>
+
+            <Space wrap size={[8, 8]}>
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                disabled={streamState.isRunning}
+                onClick={handleOpenStartModal}
+              >
+                开始持续迭代
+              </Button>
+              <Button
+                disabled={streamState.isRunning}
+                onClick={onGenerateNext}
+              >
+                单章生成
+              </Button>
+              <Button
+                disabled={streamState.isRunning || !selectedChapter || !selectedContent}
+                onClick={onContinueCurrent}
+              >
+                续写当前章
+              </Button>
+              <Button
+                disabled={streamState.isRunning || !selectedChapter}
+                onClick={onRegenerateCurrent}
+              >
+                重写当前章
+              </Button>
+              <Button
+                danger
+                icon={<StopOutlined />}
+                disabled={!streamState.isRunning}
+                onClick={onStop}
+              >
+                停止
+              </Button>
+            </Space>
           </div>
 
-          <Space wrap size={[8, 8]}>
-            <Button
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              disabled={streamState.isRunning}
-              onClick={handleOpenStartModal}
-            >
-              开始持续迭代
-            </Button>
-            <Button
-              disabled={streamState.isRunning}
-              onClick={onGenerateNext}
-            >
-              单章生成
-            </Button>
-            <Button
-              disabled={streamState.isRunning || !selectedChapter || !selectedContent}
-              onClick={onContinueCurrent}
-            >
-              续写当前章
-            </Button>
-            <Button
-              disabled={streamState.isRunning || !selectedChapter}
-              onClick={onRegenerateCurrent}
-            >
-              重写当前章
-            </Button>
-            <Button
-              danger
-              icon={<StopOutlined />}
-              disabled={!streamState.isRunning}
-              onClick={onStop}
-            >
-              停止
-            </Button>
-          </Space>
         </div>
 
         {streamState.runMode === 'continuous' && streamState.targetChapter ? (
-          <div className="mt-4 rounded-[22px] border border-sky-100 bg-sky-50/80 px-4 py-3">
+          <div className={`${isCockpit ? 'mt-3' : 'mt-4'} rounded-[22px] border border-sky-100 bg-sky-50/80 px-4 py-3`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-sky-500">
@@ -369,9 +379,10 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
         ) : null}
       </div>
 
-      <div className="flex-1 min-h-0 p-4">
-        <div className="h-full min-h-0 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+      <div className={`flex-1 min-h-0 ${isCockpit ? 'p-3.5' : 'p-4'}`}>
+        <div className="h-full min-h-0 rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]">
           <Tabs
+            className="workspace-tabs workspace-tabs--editor"
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as CenterTabKey)}
             items={[
@@ -379,7 +390,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'stream',
                 label: '实时写作',
                 children: (
-                  <div className={`${centerPanelHeightClass} flex flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-[#0f172a]`}>
+                  <div className={`${panelBodyClass} flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-[#0f172a]`}>
                     <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
                       <div>
                         <div className="text-sm font-medium text-slate-100">AI 输出面板</div>
@@ -406,7 +417,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'manuscript',
                 label: '当前正文',
                 children: selectedChapter ? (
-                  <div className={`${centerPanelHeightClass} flex flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white`}>
+                  <div className={`${panelBodyClass} flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white`}>
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                       <div>
                         <div className="text-sm font-medium text-slate-800">章节编辑器</div>
@@ -481,7 +492,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className={`${centerPanelHeightClass} flex items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white`}>
+                  <div className={`${panelBodyClass} flex items-center justify-center rounded-[18px] border border-dashed border-slate-200 bg-white`}>
                     <Empty description="当前章节还没有正文内容" />
                   </div>
                 ),
@@ -490,7 +501,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'logs',
                 label: '流程日志',
                 children: (
-                  <div className={`${centerPanelHeightClass} overflow-y-auto rounded-[24px] border border-slate-200 bg-white`}>
+                  <div className={`${panelBodyClass} overflow-y-auto rounded-[18px] border border-slate-200 bg-white`}>
                     <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
                       最新执行日志
                     </div>
@@ -530,7 +541,6 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
           <Alert
             type="info"
             showIcon
-            message="参考 PlotPilot 的托管写作流程"
             description="开始后会持续生成后续章节，直到你手动点停止，或者自动迭代到设定的目标章节。"
           />
           <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">

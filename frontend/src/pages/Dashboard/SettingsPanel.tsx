@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Collapse, Empty, Input, Segmented, Tabs, Tag } from 'antd';
-import { CaretRightOutlined } from '@ant-design/icons';
+import { Button, Empty, Input, Progress, Segmented, Tabs, Tag } from 'antd';
 import MDEditor from '@uiw/react-md-editor';
 import { InsightGraph } from '../../components/charts/InsightGraph';
 import type {
@@ -54,6 +53,27 @@ interface SettingsPanelProps {
   ) => Promise<ChapterReviewRecord>;
   workbenchHighlights?: WorkbenchHighlights;
   knowledgeGraph?: KnowledgeGraphPayload;
+  focusSignals?: Array<{
+    key: string;
+    title: string;
+    value: string;
+    detail: string;
+    tone: string;
+    icon: React.ReactNode;
+  }>;
+  dashboardPulse?: {
+    latestChapters: Chapter[];
+    nextMilestones: PlotArcPointRecord[];
+    activeStorylines: StorylineRecord[];
+    openForeshadow: ForeshadowItemRecord[];
+  };
+  aggregatedStats?: {
+    totalWords: number;
+    finishedChapters: number;
+    completionRate: number;
+    averageWords: number;
+    lastUpdate: string;
+  };
 }
 
 const styleRiskColor: Record<string, string> = {
@@ -61,6 +81,13 @@ const styleRiskColor: Record<string, string> = {
   medium: 'orange',
   high: 'red',
   unknown: 'default',
+};
+
+const toneClassMap: Record<string, string> = {
+  default: 'border-[var(--app-border)] bg-[var(--app-surface)]',
+  warning: 'border-amber-200 bg-[linear-gradient(180deg,#fffdf7_0%,#ffffff_100%)]',
+  danger: 'border-rose-200 bg-[linear-gradient(180deg,#fff8f8_0%,#ffffff_100%)]',
+  accent: 'border-sky-200 bg-[linear-gradient(180deg,#f8fcff_0%,#ffffff_100%)]',
 };
 
 const alertColorMap: Record<ContinuityAlertRecord['level'], string> = {
@@ -78,8 +105,8 @@ const isSnapshotShape = (
 } => typeof value === 'object' && value !== null;
 
 const PanelCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="mb-3 text-xs font-medium uppercase tracking-[0.22em] text-slate-400">{title}</div>
+  <div className="rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]">
+    <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">{title}</div>
     {children}
   </div>
 );
@@ -98,6 +125,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSaveChapterReview,
   workbenchHighlights,
   knowledgeGraph,
+  focusSignals,
+  dashboardPulse,
+  aggregatedStats,
 }) => {
   const [reviewStatusDraft, setReviewStatusDraft] = useState<'pending' | 'approved' | 'revise'>('pending');
   const [reviewNotesDraft, setReviewNotesDraft] = useState('');
@@ -267,6 +297,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     () => chapterAssetSnapshot?.repair_actions || [],
     [chapterAssetSnapshot?.repair_actions],
   );
+  const tacticalTabLabel = (
+    <div className="flex items-center gap-2">
+      <span>作品设定</span>
+      {(focusCard?.must_fix?.length || continuityAlerts.length) ? (
+        <Tag color={(focusCard?.must_fix?.length || continuityAlerts.some((item) => item.level === 'critical')) ? 'red' : 'orange'} className="mr-0">
+          {(focusCard?.must_fix?.length || 0) + continuityAlerts.length}
+        </Tag>
+      ) : null}
+    </div>
+  );
+  const chapterTabLabel = (
+    <div className="flex items-center gap-2">
+      <span>手稿道具</span>
+      {chapter ? (
+        <Tag color="blue" className="mr-0">
+          第 {chapter.chapter_number} 章
+        </Tag>
+      ) : null}
+    </div>
+  );
+  const reviewTabLabel = (
+    <div className="flex items-center gap-2">
+      <span>故事演进</span>
+      {currentChapterReview?.status && currentChapterReview.status !== 'pending' ? (
+        <Tag color={currentChapterReview.status === 'approved' ? 'green' : 'orange'} className="mr-0">
+          {currentChapterReview.status === 'approved' ? '已定稿' : '需修订'}
+        </Tag>
+      ) : null}
+    </div>
+  );
 
   const estimatedReviewModificationRate = useMemo(() => {
     if (typeof currentChapterReview?.modification_rate === 'number') {
@@ -347,35 +407,154 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <Empty description="暂未生成，请先完成向导设定" image={Empty.PRESENTED_IMAGE_SIMPLE} />
     ),
   }));
+  const scrollPaneStyle = { maxHeight: 'calc(100vh - 14rem)' };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Intelligence Panels</div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <h3 className="text-lg font-semibold text-slate-800">右侧情报区</h3>
-          {workbenchHighlights?.quality_snapshot && (
-            <Tag color={styleRiskColor[workbenchHighlights.quality_snapshot.style_risk || 'unknown']}>
-              风格风险 {workbenchHighlights.quality_snapshot.style_risk || 'unknown'}
-            </Tag>
-          )}
-          {workbenchHighlights?.quality_snapshot?.consistency_status && (
-            <Tag color={workbenchHighlights.quality_snapshot.consistency_status === 'ok' ? 'green' : 'orange'}>
-              一致性 {workbenchHighlights.quality_snapshot.consistency_status}
-            </Tag>
-          )}
+    <div className="flex h-full flex-col bg-[color:var(--app-shell)]">
+      <div className="border-b border-[var(--app-divider)] bg-[color:var(--app-surface)] px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[1.05rem] font-semibold text-slate-800">作品设定</h3>
+              <Tag color="purple" className="mr-0">Story Bible</Tag>
+            </div>
+            <div className="mt-2 max-w-[34rem] text-xs leading-6 text-slate-500">
+              梗概锁定、写作公约、世界观与角色关系在这里汇总。右栏负责“这本书是什么”，不抢中间正文主航道。
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {workbenchHighlights?.quality_snapshot && (
+              <Tag color={styleRiskColor[workbenchHighlights.quality_snapshot.style_risk || 'unknown']}>
+                风格风险 {workbenchHighlights.quality_snapshot.style_risk || 'unknown'}
+              </Tag>
+            )}
+            {workbenchHighlights?.quality_snapshot?.consistency_status && (
+              <Tag color={workbenchHighlights.quality_snapshot.consistency_status === 'ok' ? 'green' : 'orange'}>
+                一致性 {workbenchHighlights.quality_snapshot.consistency_status}
+              </Tag>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden p-4">
         <Tabs
-          className="h-full"
+          className="workspace-tabs workspace-tabs--panel h-full rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] px-4 pt-2 shadow-[var(--app-shadow-sm)]"
           items={[
             {
+              key: 'tactical',
+              label: tacticalTabLabel,
+              children: (
+                <div className="overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                  <PanelCard title="本书锁定">
+                    {focusCard?.mission || workbenchHighlights?.recommended_focus ? (
+                      <div className="space-y-4 text-sm">
+                        <div>
+                          <div className="text-xs text-slate-400">梗概锁定</div>
+                          <div className="mt-1 font-medium leading-6 text-slate-800">
+                            {focusCard?.mission || workbenchHighlights?.recommended_focus}
+                          </div>
+                        </div>
+                        {focusCard?.conflict ? (
+                          <div>
+                            <div className="text-xs text-slate-400">核心冲突</div>
+                            <div className="mt-1 leading-6 text-slate-600">{focusCard.conflict}</div>
+                          </div>
+                        ) : null}
+                        {focusCard?.ending_hook ? (
+                          <div>
+                            <div className="text-xs text-slate-400">写作公约</div>
+                            <div className="mt-1 leading-6 text-slate-600">{focusCard.ending_hook}</div>
+                          </div>
+                        ) : null}
+                        {focusCard?.must_keep?.length ? (
+                          <div>
+                            <div className="text-xs text-slate-400">必须保持</div>
+                            <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                              {focusCard.must_keep.map((item) => (
+                                <Tag key={item} color="blue" className="mr-0 whitespace-normal break-words">{item}</Tag>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <Empty description="生成章节后自动形成当前写作焦点" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="资料分工">
+                    {microBeats.length ? (
+                      <div className="space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                            <div className="text-xs font-medium text-indigo-500">梗概锁定</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">主线与不可违背设定</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">此处维护全书上下文，不让剧情跑偏。</div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-xs font-medium text-slate-500">世界观构建</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">世界观 Tab</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">承接更细的世界规则和框架。</div>
+                          </div>
+                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                            <div className="text-xs font-medium text-indigo-500">写作风格</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">本书锁定的文风公约</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">控制“怎么写”，保持全书语气稳定。</div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-xs font-medium text-slate-500">角色与地点</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">知识库与图谱</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">查看三元组关系和章节资产。</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <Empty description="暂无设定分工信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="写作风险与回收">
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs text-slate-400">连续性提醒</div>
+                        <div className="mt-2 space-y-2">
+                          {continuityAlerts.length ? continuityAlerts.slice(0, 3).map((alert) => (
+                            <div key={`${alert.level}-${alert.title}`} className="rounded-2xl border border-slate-100 px-4 py-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Tag color={alertColorMap[alert.level]} className="mr-0 shrink-0">
+                                  {alert.level}
+                                </Tag>
+                                <div className="font-medium text-slate-800 text-sm min-w-0 truncate">{alert.title}</div>
+                              </div>
+                              <div className="mt-2 text-sm leading-6 text-slate-600">{alert.detail}</div>
+                            </div>
+                          )) : <div className="text-slate-300">暂无连续性警报</div>}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">优先回收</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {workbenchHighlights?.due_foreshadow_items?.length
+                            ? workbenchHighlights.due_foreshadow_items.slice(0, 4).map((item) => (
+                              <Tag key={item.id} color="gold" className="mr-0 whitespace-normal break-words">
+                                {item.title}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无紧迫伏笔</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </PanelCard>
+                </div>
+              ),
+            },
+            {
               key: 'review',
-              label: '审阅',
+              label: reviewTabLabel,
               children: chapter ? (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
                   <PanelCard title="审阅状态">
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-center gap-2">
@@ -469,9 +648,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             },
             {
               key: 'chapter',
-              label: '章节',
+              label: chapterTabLabel,
               children: chapter ? (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
                   <PanelCard title="当前章节">
                     <div className="space-y-4 text-sm">
                       <div>
@@ -763,9 +942,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             },
             {
               key: 'settings',
-              label: '设定',
+              label: '世界观',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
                   <PanelCard title="设定总览">
                     <Tabs size="small" items={settingsTabItems} />
                   </PanelCard>
@@ -792,173 +971,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               ),
             },
             {
-              key: 'tactical',
-              label: '战术',
-              children: (
-                <div className="overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
-                  <Collapse
-                    defaultActiveKey={['focus-card']}
-                    expandIcon={({ isActive }) => (
-                      <CaretRightOutlined rotate={isActive ? 90 : 0} className="text-slate-400" />
-                    )}
-                    className="writing-hints-collapse"
-                    items={[
-                      {
-                        key: 'focus-card',
-                        label: (
-                          <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                            本章战术卡
-                          </span>
-                        ),
-                        children: focusCard?.mission ? (
-                          <div className="space-y-3 text-sm text-slate-600">
-                            <div>
-                              <div className="text-xs text-slate-400">主任务</div>
-                              <div className="mt-1 font-medium text-slate-800">{focusCard.mission}</div>
-                            </div>
-                            {focusCard.conflict ? (
-                              <div>
-                                <div className="text-xs text-slate-400">核心冲突</div>
-                                <div className="mt-1">{focusCard.conflict}</div>
-                              </div>
-                            ) : null}
-                            {focusCard.key_turn ? (
-                              <div>
-                                <div className="text-xs text-slate-400">关键转折</div>
-                                <div className="mt-1">{focusCard.key_turn}</div>
-                              </div>
-                            ) : null}
-                            {focusCard.ending_hook ? (
-                              <div>
-                                <div className="text-xs text-slate-400">收尾钩子</div>
-                                <div className="mt-1">{focusCard.ending_hook}</div>
-                              </div>
-                            ) : null}
-                            {focusCard.must_fix?.length ? (
-                              <div>
-                                <div className="text-xs text-slate-400">优先修复</div>
-                                <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                                  {focusCard.must_fix.map((item) => (
-                                    <Tag key={item} color="red" className="mr-0 whitespace-normal break-words">{item}</Tag>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            {focusCard.must_payoff?.length ? (
-                              <div>
-                                <div className="text-xs text-slate-400">本章优先触碰</div>
-                                <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                                  {focusCard.must_payoff.map((item) => (
-                                    <Tag key={item} color="gold" className="mr-0 whitespace-normal break-words">{item}</Tag>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={
-                              <span className="text-xs text-slate-400">
-                                生成第一章后自动填充战术卡
-                              </span>
-                            }
-                          />
-                        ),
-                      },
-                      {
-                        key: 'micro-beats',
-                        label: (
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                              Micro Beats
-                            </span>
-                            {microBeats.length ? (
-                              <Tag color="blue" className="mr-0 shrink-0">{microBeats.length} 段</Tag>
-                            ) : null}
-                          </div>
-                        ),
-                        children: microBeats.length ? (
-                          <div className="space-y-3">
-                            {microBeats.map((beat) => (
-                              <div key={`${beat.index}-${beat.label}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="font-medium text-slate-800 text-sm min-w-0 truncate">
-                                    {beat.index}. {beat.label}
-                                  </div>
-                                  <Tag color="blue" className="mr-0 shrink-0">
-                                    {beat.target_words} 字
-                                  </Tag>
-                                </div>
-                                <div className="mt-1 text-xs text-slate-400">聚焦：{beat.focus}</div>
-                                <div className="mt-2 text-sm leading-6 text-slate-600">{beat.objective}</div>
-                              </div>
-                            ))}
-                            <div className="pt-1 text-xs text-slate-400">沿着节拍生成，不要一次推太远</div>
-                          </div>
-                        ) : (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={
-                              <span className="text-xs text-slate-400">
-                                生成章节后自动生成节拍规划
-                              </span>
-                            }
-                          />
-                        ),
-                      },
-                      {
-                        key: 'continuity-alerts',
-                        label: (
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                              连续性提醒
-                            </span>
-                            {continuityAlerts.length ? (
-                              <Tag
-                                color={continuityAlerts.some((a) => a.level === 'critical') ? 'red' : 'orange'}
-                                className="mr-0 shrink-0"
-                              >
-                                {continuityAlerts.length} 条
-                              </Tag>
-                            ) : null}
-                          </div>
-                        ),
-                        children: continuityAlerts.length ? (
-                          <div className="space-y-3">
-                            {continuityAlerts.map((alert) => (
-                              <div key={`${alert.level}-${alert.title}`} className="rounded-2xl border border-slate-100 px-4 py-3">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <Tag color={alertColorMap[alert.level]} className="mr-0 shrink-0">
-                                    {alert.level}
-                                  </Tag>
-                                  <div className="font-medium text-slate-800 text-sm min-w-0 truncate">{alert.title}</div>
-                                </div>
-                                <div className="mt-2 text-sm leading-6 text-slate-600">{alert.detail}</div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={
-                              <span className="text-xs text-slate-400">
-                                暂无连续性警报
-                              </span>
-                            }
-                          />
-                        ),
-                      },
-                    ]}
-                  />
-                </div>
-              ),
-            },
-            {
               key: 'assets',
-              label: '资产',
+              label: '知识库',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
                   <PanelCard title="章节摘要">
                     {selectedSummary ? (
                       <div className="space-y-3 text-sm">
@@ -1079,9 +1095,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             },
             {
               key: 'quality',
-              label: '质检',
+              label: '角色锚点',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
                   <PanelCard title="连续性警报">
                     {workbenchHighlights?.continuity_alerts?.length ? (
                       <div className="space-y-3">
@@ -1167,9 +1183,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             },
             {
               key: 'graph',
-              label: '图谱',
+              label: '伏笔账本',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
                   <PanelCard title="工作焦点">
                     <div className="space-y-3 text-sm">
                       <div>
@@ -1208,6 +1224,124 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <Empty description="暂无图谱数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                     )}
                   </PanelCard>
+                </div>
+              ),
+            },
+            {
+              key: 'pulse',
+              label: '项目脉冲',
+              children: (
+                <div className="overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                  {aggregatedStats && (
+                    <PanelCard title="总进度">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-500">完成率</span>
+                          <span className="font-semibold text-slate-800">{aggregatedStats.completionRate}%</span>
+                        </div>
+                        <Progress percent={aggregatedStats.completionRate} showInfo={false} strokeColor="#2563eb" trailColor="#e5e7eb" />
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                          <span>总字数 <span className="font-semibold text-slate-700">{aggregatedStats.totalWords.toLocaleString()}</span></span>
+                          <span>完成章节 <span className="font-semibold text-slate-700">{aggregatedStats.finishedChapters}</span></span>
+                          <span>均字数 <span className="font-semibold text-slate-700">{aggregatedStats.averageWords.toLocaleString()}</span></span>
+                          <span>最近更新 <span className="font-semibold text-slate-700">{aggregatedStats.lastUpdate.slice(0, 10)}</span></span>
+                        </div>
+                      </div>
+                    </PanelCard>
+                  )}
+
+                  {focusSignals?.length ? (
+                    <PanelCard title="焦点信号">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {focusSignals.map((item) => (
+                          <div
+                            key={item.key}
+                            className={`rounded-[14px] border px-3 py-2.5 ${toneClassMap[item.tone] || toneClassMap.default}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">{item.title}</div>
+                                <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">{item.value}</div>
+                              </div>
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[color:var(--app-surface-subtle)] text-[color:var(--app-text-secondary)]">
+                                {item.icon}
+                              </div>
+                            </div>
+                            <div className="mt-1.5 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </PanelCard>
+                  ) : null}
+
+                  {dashboardPulse?.latestChapters.length ? (
+                    <PanelCard title="最近章节">
+                      <div className="space-y-2">
+                        {dashboardPulse.latestChapters.map((ch) => (
+                          <div key={ch.id} className="rounded-[14px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-[color:var(--app-text-primary)]">
+                                  第 {ch.chapter_number} 章 {ch.title || ''}
+                                </div>
+                                <div className="mt-0.5 text-xs text-[color:var(--app-text-muted)]">
+                                  {ch.word_count || 0} 字 · {ch.review_status === 'approved' ? '已定稿' : ch.review_status === 'revise' ? '需修订' : '待审'}
+                                </div>
+                              </div>
+                              <Tag color={ch.consistency_status?.status === 'ok' ? 'green' : ch.consistency_status?.status ? 'orange' : 'default'} className="mr-0 shrink-0">
+                                {ch.consistency_status?.status || '未检'}
+                              </Tag>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </PanelCard>
+                  ) : null}
+
+                  {(dashboardPulse?.activeStorylines.length || dashboardPulse?.nextMilestones.length) ? (
+                    <PanelCard title="主线与情节点">
+                      <div className="space-y-2">
+                        {dashboardPulse?.activeStorylines.map((item) => (
+                          <div key={item.id} className="rounded-[14px] bg-[color:var(--app-shell)] px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm font-medium text-[color:var(--app-text-primary)]">{item.name}</div>
+                              <Tag color={item.status === 'active' ? 'green' : 'default'} className="mr-0 shrink-0">{item.status}</Tag>
+                            </div>
+                            {item.description ? (
+                              <div className="mt-1 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.description}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                        {dashboardPulse?.nextMilestones.map((point) => (
+                          <div key={point.id} className="rounded-[14px] border border-[var(--app-border)] px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm font-medium text-[color:var(--app-text-primary)]">第 {point.chapter_number} 章</div>
+                              <Tag color="purple" className="mr-0 shrink-0">张力 {point.tension_level}</Tag>
+                            </div>
+                            <div className="mt-1 text-xs leading-5 text-[color:var(--app-text-muted)]">{point.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </PanelCard>
+                  ) : null}
+
+                  {dashboardPulse?.openForeshadow.length ? (
+                    <PanelCard title="伏笔回收">
+                      <div className="space-y-2">
+                        {dashboardPulse.openForeshadow.map((item) => (
+                          <div key={item.id} className="rounded-[14px] bg-[color:var(--app-shell)] px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm font-medium text-[color:var(--app-text-primary)]">{item.title}</div>
+                              <Tag color="gold" className="mr-0 shrink-0">{item.expected_payoff_chapter || '--'} 章</Tag>
+                            </div>
+                            {item.description ? (
+                              <div className="mt-1 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.description}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </PanelCard>
+                  ) : null}
                 </div>
               ),
             },
