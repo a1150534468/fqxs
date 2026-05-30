@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Routes, Route, Navigate, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { Button, message } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { getNovels, createDraft, deleteNovel, getWorkbenchContext } from '../../api/novels';
@@ -19,8 +19,25 @@ const pickResults = (response: any) => {
   return [];
 };
 
+const parsePositiveInteger = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const buildWorkspacePath = (novelId: number, chapterId?: number | null) => (
+  chapterId ? `/workspace/${novelId}?chapter=${chapterId}` : `/workspace/${novelId}`
+);
+
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const workspaceMatch = useMemo(
+    () => matchPath('/workspace/:novelId', location.pathname),
+    [location.pathname],
+  );
+  const routeNovelId = parsePositiveInteger(workspaceMatch?.params.novelId);
+  const routeChapterId = parsePositiveInteger(new URLSearchParams(location.search).get('chapter'));
   const [novels, setNovels] = useState<Novel[]>([]);
   const [workbenchByProject, setWorkbenchByProject] = useState<Record<number, WorkbenchContext>>({});
   const [selectedNovelId, setSelectedNovelId] = useState<number | null>(null);
@@ -32,6 +49,7 @@ const Dashboard = () => {
   const [wizardDraftId, setWizardDraftId] = useState<number | null>(null);
   const [llmModalOpen, setLlmModalOpen] = useState(false);
   const [statsOverview, setStatsOverview] = useState<StatsOverview | null>(null);
+  const selectedNovelIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     loadNovels();
@@ -41,14 +59,60 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
+    selectedNovelIdRef.current = selectedNovelId;
+  }, [selectedNovelId]);
+
+  useEffect(() => {
+    if (!workspaceMatch) return;
+    if (routeNovelId == null) {
+      navigate('/', { replace: true });
+      return;
+    }
+
+    setSelectedNovelId((current) => (current === routeNovelId ? current : routeNovelId));
+    setSelectedChapterId((current) => (current === routeChapterId ? current : routeChapterId));
+  }, [navigate, routeChapterId, routeNovelId, workspaceMatch]);
+
+  useEffect(() => {
     if (selectedNovelId == null) return;
-    if (!workbenchByProject[selectedNovelId]) {
+    const currentWorkbench = workbenchByProject[selectedNovelId];
+    if (!currentWorkbench) {
       fetchWorkbenchContextForProject(selectedNovelId);
-    } else if (!selectedChapterId) {
-      const list = workbenchByProject[selectedNovelId]?.chapters ?? [];
-      if (list.length) setSelectedChapterId(list[0].id);
+      return;
+    }
+
+    const list = currentWorkbench.chapters ?? [];
+    if (!list.length) {
+      if (selectedChapterId !== null) {
+        setSelectedChapterId(null);
+      }
+      return;
+    }
+
+    if (!list.some((chapter) => chapter.id === selectedChapterId)) {
+      setSelectedChapterId(list[0].id);
     }
   }, [selectedNovelId, workbenchByProject, selectedChapterId]);
+
+  useEffect(() => {
+    if (!workspaceMatch || routeNovelId == null || selectedNovelId == null) return;
+    if (selectedNovelId !== routeNovelId) return;
+
+    const nextPath = buildWorkspacePath(selectedNovelId, selectedChapterId);
+    const currentPath = `${location.pathname}${location.search}`;
+
+    if (nextPath !== currentPath) {
+      navigate(nextPath, { replace: true });
+    }
+  }, [
+    location.pathname,
+    location.search,
+    navigate,
+    routeNovelId,
+    selectedChapterId,
+    selectedNovelId,
+    workspaceMatch,
+  ]);
 
   const selectedWorkbench = selectedNovelId != null ? workbenchByProject[selectedNovelId] ?? null : null;
   const selectedNovel = selectedWorkbench?.project ?? novels.find((n) => n.id === selectedNovelId) ?? null;
@@ -71,11 +135,13 @@ const Dashboard = () => {
         novel.id === projectId ? { ...novel, ...response.project } : novel
       )));
 
-      if (projectId === selectedNovelId) {
+      if (projectId === selectedNovelIdRef.current) {
         const list = response.chapters ?? [];
-        if (!list.some((chapter: { id: number }) => chapter.id === selectedChapterId)) {
-          setSelectedChapterId(list[0]?.id ?? null);
-        }
+        setSelectedChapterId((current) => (
+          list.some((chapter: { id: number }) => chapter.id === current)
+            ? current
+            : (list[0]?.id ?? null)
+        ));
       }
     } catch (error) { console.error('Failed to fetch workbench context', error); }
     finally { setChapterLoading(false); }
@@ -131,7 +197,8 @@ const Dashboard = () => {
     loadNovels().then(() => {
       if (newProjectId) {
         setSelectedNovelId(newProjectId);
-        navigate('/workspace');
+        setSelectedChapterId(null);
+        navigate(buildWorkspacePath(newProjectId));
       }
     });
   };
@@ -139,8 +206,7 @@ const Dashboard = () => {
   const handleSelectNovel = (novelId: number) => {
     setSelectedNovelId(novelId);
     setSelectedChapterId(null);
-    fetchWorkbenchContextForProject(novelId);
-    navigate('/workspace');
+    navigate(buildWorkspacePath(novelId));
   };
 
   const handleDeleteNovel = async (novelId: number) => {
@@ -156,6 +222,7 @@ const Dashboard = () => {
       if (selectedNovelId === novelId) {
         setSelectedNovelId(null);
         setSelectedChapterId(null);
+        navigate('/');
       }
 
       message.success('书目已删除');
@@ -180,8 +247,7 @@ const Dashboard = () => {
                 onClick={() => {
                   setSelectedNovelId(projectId);
                   setSelectedChapterId(null);
-                  fetchWorkbenchContextForProject(projectId);
-                  navigate('/workspace');
+                  navigate(buildWorkspacePath(projectId));
                 }}
                 title={`${title} ${state.runMode === 'continuous' ? 'continuous' : state.mode || 'generate'} 中`}
               >
@@ -226,7 +292,7 @@ const Dashboard = () => {
           }
         />
         <Route
-          path="/workspace"
+          path="/workspace/:novelId"
           element={
             <WorkspacePage
               selectedNovel={selectedNovel}
@@ -255,6 +321,7 @@ const Dashboard = () => {
             />
           }
         />
+        <Route path="/workspace" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <NewBookWizard

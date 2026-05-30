@@ -33,13 +33,6 @@ import type {
 
 type SurfaceTone = 'default' | 'warning' | 'danger' | 'accent';
 
-const toneClassMap: Record<SurfaceTone, string> = {
-  default: 'border-[var(--app-border)] bg-[var(--app-surface)]',
-  warning: 'border-amber-200 bg-[linear-gradient(180deg,#fffdf7_0%,#ffffff_100%)]',
-  danger: 'border-rose-200 bg-[linear-gradient(180deg,#fff8f8_0%,#ffffff_100%)]',
-  accent: 'border-sky-200 bg-[linear-gradient(180deg,#f8fcff_0%,#ffffff_100%)]',
-};
-
 const formatWorkflowStatus = (status?: string) => {
   if (status === 'blocked') return '阻塞';
   if (status === 'warning') return '提醒';
@@ -434,7 +427,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const writingCenterPanel = (
     <main
       aria-label="正文工作区"
-      className="min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] shadow-[var(--app-shadow-sm)]"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] shadow-[var(--app-shadow-sm)]"
     >
       <WritingCenter
         novel={selectedNovel}
@@ -466,7 +459,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const intelligencePanel = (
     <aside
       aria-label="右侧情报区"
-      className="min-h-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] shadow-[var(--app-shadow-sm)]"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] shadow-[var(--app-shadow-sm)]"
     >
       <SettingsPanel
         settings={settings}

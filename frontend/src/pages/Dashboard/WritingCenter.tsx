@@ -148,12 +148,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
     streamState.targetChapter,
   ]);
   const isCockpit = surface === 'cockpit';
-  const isIntelligence = surface === 'intelligence';
-  const panelBodyClass = isCockpit
-    ? 'min-h-[34rem] h-[calc(100vh-9.5rem)]'
-    : isIntelligence
-      ? 'min-h-[28rem] h-[calc(100vh-15.75rem)]'
-      : 'min-h-[27rem] h-[calc(100vh-16.5rem)]';
+  const panelBodyClass = 'flex h-full min-h-0 flex-col';
 
   const handleOpenStartModal = () => {
     setTargetChapterDraft(defaultIterationTarget);
@@ -380,9 +375,9 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
       </div>
 
       <div className={`flex-1 min-h-0 ${isCockpit ? 'p-3.5' : 'p-4'}`}>
-        <div className="h-full min-h-0 rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]">
+        <div className="flex h-full min-h-0 flex-col rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]">
           <Tabs
-            className="workspace-tabs workspace-tabs--editor"
+            className="workspace-tabs workspace-tabs--editor flex-1 min-h-0"
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as CenterTabKey)}
             items={[
@@ -390,7 +385,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'stream',
                 label: '实时写作',
                 children: (
-                  <div className={`${panelBodyClass} flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-[#0f172a]`}>
+                  <div className={`${panelBodyClass} overflow-hidden rounded-[18px] border border-slate-200 bg-[#0f172a]`}>
                     <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
                       <div>
                         <div className="text-sm font-medium text-slate-100">AI 输出面板</div>
@@ -417,7 +412,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'manuscript',
                 label: '当前正文',
                 children: selectedChapter ? (
-                  <div className={`${panelBodyClass} flex flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white`}>
+                  <div className={`${panelBodyClass} overflow-hidden rounded-[18px] border border-slate-200 bg-white`}>
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                       <div>
                         <div className="text-sm font-medium text-slate-800">章节编辑器</div>
@@ -460,7 +455,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                       </div>
                     ) : null}
 
-                    <div className="flex-1 overflow-hidden p-4">
+                    <div className="flex-1 min-h-0 overflow-hidden p-4">
                       <Input.TextArea
                         value={draftContent}
                         disabled={streamState.isRunning}
@@ -492,7 +487,7 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className={`${panelBodyClass} flex items-center justify-center rounded-[18px] border border-dashed border-slate-200 bg-white`}>
+                  <div className={`${panelBodyClass} items-center justify-center rounded-[18px] border border-dashed border-slate-200 bg-white`}>
                     <Empty description="当前章节还没有正文内容" />
                   </div>
                 ),
@@ -501,22 +496,24 @@ export const WritingCenter: React.FC<WritingCenterProps> = ({
                 key: 'logs',
                 label: '流程日志',
                 children: (
-                  <div className={`${panelBodyClass} overflow-y-auto rounded-[18px] border border-slate-200 bg-white`}>
-                    <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
+                  <div className={`${panelBodyClass} overflow-hidden rounded-[18px] border border-slate-200 bg-white`}>
+                    <div className="shrink-0 border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500">
                       最新执行日志
                     </div>
                     {streamState.logs.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-slate-400">等待任务启动...</div>
+                      <div className="flex-1 overflow-y-auto px-4 py-6 text-sm text-slate-400">等待任务启动...</div>
                     ) : (
-                      streamState.logs.map((log, index) => (
-                        <div
-                          key={`${log.time}-${index}`}
-                          className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600 last:border-b-0"
-                        >
-                          <span className="mr-3 text-xs text-slate-400">[{log.time}]</span>
-                          {log.message}
-                        </div>
-                      ))
+                      <div className="flex-1 overflow-y-auto">
+                        {streamState.logs.map((log, index) => (
+                          <div
+                            key={`${log.time}-${index}`}
+                            className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600 last:border-b-0"
+                          >
+                            <span className="mr-3 text-xs text-slate-400">[{log.time}]</span>
+                            {log.message}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ),

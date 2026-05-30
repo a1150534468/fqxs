@@ -111,6 +111,15 @@ const PanelCard: React.FC<{ title: string; children: React.ReactNode }> = ({ tit
   </div>
 );
 
+const ScrollTabPane: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = '',
+}) => (
+  <div className={`h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4 ${className}`.trim()}>
+    {children}
+  </div>
+);
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   settings,
   chapter,
@@ -143,13 +152,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     });
     return map;
   }, [settings]);
-
-  const selectedSummary = useMemo(() => {
-    if (!chapter) return chapterSummaries[chapterSummaries.length - 1];
-    return chapterSummaries.find((item) => item.chapter === chapter.id)
-      || chapterSummaries.find((item) => item.chapter_number === chapter.chapter_number)
-      || chapterSummaries[chapterSummaries.length - 1];
-  }, [chapter, chapterSummaries]);
 
   const matchedChapterSummary = useMemo(() => {
     if (!chapter) return null;
@@ -317,16 +319,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       ) : null}
     </div>
   );
-  const reviewTabLabel = (
-    <div className="flex items-center gap-2">
-      <span>故事演进</span>
-      {currentChapterReview?.status && currentChapterReview.status !== 'pending' ? (
-        <Tag color={currentChapterReview.status === 'approved' ? 'green' : 'orange'} className="mr-0">
-          {currentChapterReview.status === 'approved' ? '已定稿' : '需修订'}
-        </Tag>
-      ) : null}
-    </div>
-  );
 
   const estimatedReviewModificationRate = useMemo(() => {
     if (typeof currentChapterReview?.modification_rate === 'number') {
@@ -407,7 +399,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <Empty description="暂未生成，请先完成向导设定" image={Empty.PRESENTED_IMAGE_SIMPLE} />
     ),
   }));
-  const scrollPaneStyle = { maxHeight: 'calc(100vh - 14rem)' };
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--app-shell)]">
@@ -445,28 +436,55 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               key: 'tactical',
               label: tacticalTabLabel,
               children: (
-                <div className="overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
-                  <PanelCard title="本书锁定">
+                <ScrollTabPane className="space-y-4">
+                  <PanelCard title="作品总览">
                     {focusCard?.mission || workbenchHighlights?.recommended_focus ? (
                       <div className="space-y-4 text-sm">
-                        <div>
-                          <div className="text-xs text-slate-400">梗概锁定</div>
-                          <div className="mt-1 font-medium leading-6 text-slate-800">
+                        <div className="rounded-[18px] border border-indigo-100 bg-indigo-50/70 px-4 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Tag color="blue" className="mr-0">梗概锁定</Tag>
+                            <Tag color="purple" className="mr-0">写作公约</Tag>
+                          </div>
+                          <div className="mt-3 font-medium leading-6 text-slate-800">
                             {focusCard?.mission || workbenchHighlights?.recommended_focus}
                           </div>
+                          {focusCard?.conflict ? (
+                            <div className="mt-3">
+                              <div className="text-xs text-slate-400">核心冲突</div>
+                              <div className="mt-1 leading-6 text-slate-600">{focusCard.conflict}</div>
+                            </div>
+                          ) : null}
+                          {focusCard?.ending_hook ? (
+                            <div className="mt-3">
+                              <div className="text-xs text-slate-400">写作公约</div>
+                              <div className="mt-1 leading-6 text-slate-600">{focusCard.ending_hook}</div>
+                            </div>
+                          ) : null}
                         </div>
-                        {focusCard?.conflict ? (
-                          <div>
-                            <div className="text-xs text-slate-400">核心冲突</div>
-                            <div className="mt-1 leading-6 text-slate-600">{focusCard.conflict}</div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                            <div className="text-xs font-medium text-indigo-500">梗概锁定</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">主线与不可违背设定</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">右栏先锁住全书主线，不让正文推进时跑偏。</div>
                           </div>
-                        ) : null}
-                        {focusCard?.ending_hook ? (
-                          <div>
-                            <div className="text-xs text-slate-400">写作公约</div>
-                            <div className="mt-1 leading-6 text-slate-600">{focusCard.ending_hook}</div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-xs font-medium text-slate-500">世界观构建</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">世界观 Tab 承接细设定</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">世界规则、地图、角色关系和主线结构放到专门页维护。</div>
                           </div>
-                        ) : null}
+                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                            <div className="text-xs font-medium text-indigo-500">写作风格</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">本书公约只在这里锁定</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">统一语气、人称、叙事距离与文风禁区。</div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-xs font-medium text-slate-500">角色与事实</div>
+                            <div className="mt-2 text-sm font-semibold text-slate-800">知识库负责可检索资产</div>
+                            <div className="mt-1 text-xs leading-5 text-slate-500">人物、地点、事实、伏笔和图谱放到知识库与图谱页。</div>
+                          </div>
+                        </div>
+
                         {focusCard?.must_keep?.length ? (
                           <div>
                             <div className="text-xs text-slate-400">必须保持</div>
@@ -483,39 +501,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     )}
                   </PanelCard>
 
-                  <PanelCard title="资料分工">
-                    {microBeats.length ? (
-                      <div className="space-y-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                            <div className="text-xs font-medium text-indigo-500">梗概锁定</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-800">主线与不可违背设定</div>
-                            <div className="mt-1 text-xs leading-5 text-slate-500">此处维护全书上下文，不让剧情跑偏。</div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <div className="text-xs font-medium text-slate-500">世界观构建</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-800">世界观 Tab</div>
-                            <div className="mt-1 text-xs leading-5 text-slate-500">承接更细的世界规则和框架。</div>
-                          </div>
-                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                            <div className="text-xs font-medium text-indigo-500">写作风格</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-800">本书锁定的文风公约</div>
-                            <div className="mt-1 text-xs leading-5 text-slate-500">控制“怎么写”，保持全书语气稳定。</div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <div className="text-xs font-medium text-slate-500">角色与地点</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-800">知识库与图谱</div>
-                            <div className="mt-1 text-xs leading-5 text-slate-500">查看三元组关系和章节资产。</div>
+                  <PanelCard title="执行焦点">
+                    <div className="space-y-4 text-sm">
+                      {focusCard?.must_fix?.length ? (
+                        <div>
+                          <div className="text-xs text-slate-400">优先修正</div>
+                          <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                            {focusCard.must_fix.map((item) => (
+                              <Tag key={item} color="red" className="mr-0 whitespace-normal break-words">{item}</Tag>
+                            ))}
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <Empty description="暂无设定分工信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
+                      ) : null}
 
-                  <PanelCard title="写作风险与回收">
-                    <div className="space-y-4 text-sm">
+                      {microBeats.length ? (
+                        <div>
+                          <div className="text-xs text-slate-400">分段推进</div>
+                          <div className="mt-2 space-y-2">
+                            {microBeats.slice(0, 4).map((beat, index) => (
+                              <div key={`${beat.objective}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                                <div className="font-medium text-slate-800">{beat.objective || `推进点 ${index + 1}`}</div>
+                                <div className="mt-1 text-xs leading-5 text-slate-500">
+                                  {beat.label || beat.focus || `建议字数 ${beat.target_words || '--'}`}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div>
                         <div className="text-xs text-slate-400">连续性提醒</div>
                         <div className="mt-2 space-y-2">
@@ -525,7 +539,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <Tag color={alertColorMap[alert.level]} className="mr-0 shrink-0">
                                   {alert.level}
                                 </Tag>
-                                <div className="font-medium text-slate-800 text-sm min-w-0 truncate">{alert.title}</div>
+                                <div className="min-w-0 truncate text-sm font-medium text-slate-800">{alert.title}</div>
                               </div>
                               <div className="mt-2 text-sm leading-6 text-slate-600">{alert.detail}</div>
                             </div>
@@ -547,110 +561,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       </div>
                     </div>
                   </PanelCard>
-                </div>
-              ),
-            },
-            {
-              key: 'review',
-              label: reviewTabLabel,
-              children: chapter ? (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
-                  <PanelCard title="审阅状态">
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Tag color={reviewStatusDraft === 'approved' ? 'green' : reviewStatusDraft === 'revise' ? 'orange' : 'default'} className="mr-0">
-                          {reviewStatusDraft === 'approved' ? '已定稿' : reviewStatusDraft === 'revise' ? '需修订' : '待阅'}
-                        </Tag>
-                        <Tag color={estimatedReviewModificationRate >= 15 ? 'blue' : 'red'} className="mr-0">
-                          修改率 {estimatedReviewModificationRate}%
-                        </Tag>
-                        {currentChapterReview?.reviewer_username ? (
-                          <Tag color="cyan" className="mr-0">
-                            {currentChapterReview.reviewer_username}
-                          </Tag>
-                        ) : null}
-                      </div>
-
-                      <Segmented
-                        block
-                        value={reviewStatusDraft}
-                        onChange={(value) => setReviewStatusDraft(value as 'pending' | 'approved' | 'revise')}
-                        options={[
-                          { label: '待阅', value: 'pending' },
-                          { label: '已定稿', value: 'approved' },
-                          { label: '需修订', value: 'revise' },
-                        ]}
-                      />
-
-                      <div>
-                        <div className="mb-2 text-xs text-slate-400">审阅意见</div>
-                        <Input.TextArea
-                          value={reviewNotesDraft}
-                          onChange={(event) => setReviewNotesDraft(event.target.value)}
-                          rows={8}
-                          placeholder="记录人工审稿结论、问题位置和修改建议。"
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          onClick={() => setReviewNotesDraft(aiReviewDraft || reviewNotesDraft)}
-                          disabled={!aiReviewDraft}
-                        >
-                          写入 AI 建议
-                        </Button>
-                        <Button
-                          onClick={handleGenerateAiReview}
-                          loading={generatingReview}
-                        >
-                          生成 AI 审读建议
-                        </Button>
-                        <Button
-                          type="primary"
-                          onClick={handleSaveReview}
-                          loading={savingReview}
-                        >
-                          保存审阅
-                        </Button>
-                      </div>
-                    </div>
-                  </PanelCard>
-
-                  <PanelCard title="AI 审读建议">
-                    {aiReviewDraft ? (
-                      <div className="space-y-4 text-sm">
-                        <div className="rounded-2xl bg-slate-50 px-4 py-3 leading-6 text-slate-700 whitespace-pre-wrap">
-                          {aiReviewDraft}
-                        </div>
-                        <div>
-                          <div className="mb-2 text-xs text-slate-400">动作清单</div>
-                          <div className="min-w-0 flex flex-wrap gap-2">
-                            {aiActionItemsDraft.length
-                              ? aiActionItemsDraft.map((item, index) => (
-                                <Tag key={`${item}-${index}`} color="blue" className="mr-0 whitespace-normal break-words">
-                                  {item}
-                                </Tag>
-                              ))
-                              : <span className="text-slate-300">暂无动作建议</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <Empty description="还没有 AI 审读建议" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <Empty description="请选择一个章节后开始审阅" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                </div>
+                </ScrollTabPane>
               ),
             },
             {
               key: 'chapter',
               label: chapterTabLabel,
               children: chapter ? (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                <ScrollTabPane className="space-y-4">
                   <PanelCard title="当前章节">
                     <div className="space-y-4 text-sm">
                       <div>
@@ -872,68 +790,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </div>
                   </PanelCard>
 
-                  <PanelCard title="一致性雷达">
-                    <div className="space-y-4 text-sm">
-                      <div>
-                        <div className="text-xs text-slate-400">风险结论</div>
-                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                          {chapterConsistencyRisks.length
-                            ? chapterConsistencyRisks.map((item, index) => (
-                              <Tag key={`${item}-${index}`} color="orange" className="mr-0 whitespace-normal break-words">
-                                {item}
-                              </Tag>
-                            ))
-                            : <span className="text-slate-300">暂无明显风险</span>}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">检查实体</div>
-                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                          {chapterCheckedEntities.length
-                            ? chapterCheckedEntities.map((item) => (
-                              <Tag key={item} color="blue" className="mr-0 whitespace-normal break-words">{item}</Tag>
-                            ))
-                            : <span className="text-slate-300">暂无实体检查记录</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </PanelCard>
-
-                  <PanelCard title="修订闭环">
-                    <div className="space-y-4 text-sm">
-                      <div>
-                        <div className="text-xs text-slate-400">质量问题</div>
-                        <div className="mt-2 space-y-2">
-                          {chapterQualityIssues.length ? chapterQualityIssues.map((item, index) => (
-                            <div key={`${item.code}-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <Tag color={item.severity === 'high' ? 'red' : item.severity === 'medium' ? 'orange' : 'default'} className="mr-0">
-                                  {item.severity}
-                                </Tag>
-                                <div className="font-medium text-slate-800">{item.message}</div>
-                              </div>
-                              {item.suggestion ? (
-                                <div className="mt-2 text-xs leading-5 text-slate-500">{item.suggestion}</div>
-                              ) : null}
-                            </div>
-                          )) : <div className="text-slate-300">暂无结构化质量问题</div>}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">建议先改</div>
-                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                          {chapterRepairActions.length
-                            ? chapterRepairActions.map((item, index) => (
-                              <Tag key={`${item}-${index}`} color="red" className="mr-0 whitespace-normal break-words">
-                                {item}
-                              </Tag>
-                            ))
-                            : <span className="text-slate-300">暂无修订动作</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </PanelCard>
-                </div>
+                </ScrollTabPane>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <Empty description="请选择一个章节后查看章节资产" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -944,105 +801,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               key: 'settings',
               label: '世界观',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                <ScrollTabPane className="space-y-4">
                   <PanelCard title="设定总览">
                     <Tabs size="small" items={settingsTabItems} />
                   </PanelCard>
-                  <PanelCard title="当前主线">
-                    {workbenchHighlights?.active_storyline ? (
-                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium text-slate-800">
-                            {workbenchHighlights.active_storyline.name}
-                          </div>
-                          <Tag color={workbenchHighlights.active_storyline.status === 'active' ? 'green' : 'default'}>
-                            {workbenchHighlights.active_storyline.status}
-                          </Tag>
-                        </div>
-                        <div className="mt-2 text-sm leading-6 text-slate-600">
-                          {workbenchHighlights.active_storyline.description || '暂无描述'}
-                        </div>
-                      </div>
-                    ) : (
-                      <Empty description="暂无主线信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
-                </div>
+                </ScrollTabPane>
               ),
             },
             {
               key: 'assets',
               label: '知识库',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
-                  <PanelCard title="章节摘要">
-                    {selectedSummary ? (
-                      <div className="space-y-3 text-sm">
-                        <div>
-                          <div className="text-xs text-slate-400">摘要</div>
-                          <div className="mt-1 leading-6 text-slate-700">{selectedSummary.summary || '暂无摘要'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">关键事件</div>
-                          <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                            {selectedSummary.key_events?.length
-                              ? selectedSummary.key_events.map((event, index) => (
-                                <Tag key={`${event}-${index}`} color="blue" className="mr-0 whitespace-normal break-words">{event}</Tag>
-                              ))
-                              : <span className="text-slate-300">暂无关键事件</span>}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">开放线索</div>
-                          <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                            {selectedSummary.open_threads?.length
-                              ? selectedSummary.open_threads.map((item, index) => (
-                                <Tag key={`${item}-${index}`} color="gold" className="mr-0 whitespace-normal break-words">{item}</Tag>
-                              ))
-                              : <span className="text-slate-300">暂无开放线索</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <Empty description="暂无章节摘要" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
-
-                  <PanelCard title="故事线与情节点">
-                    {storylines.length || plotArcPoints.length ? (
-                      <div className="space-y-3">
-                        {storylines.slice(0, 4).map((item) => (
-                          <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="font-medium text-slate-800">{item.name}</div>
-                              <Tag color={item.status === 'active' ? 'green' : 'default'} className="mr-0">
-                                {item.status}
-                              </Tag>
-                            </div>
-                            <div className="mt-2 text-sm leading-6 text-slate-600">{item.description || '暂无描述'}</div>
-                          </div>
-                        ))}
-                        {plotArcPoints.slice(0, 6).map((item) => (
-                          <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 px-4 py-3">
-                            <div>
-                              <div className="text-sm font-medium text-slate-800">
-                                第 {item.chapter_number} 章 · {item.description}
-                              </div>
-                              <div className="mt-1 text-xs text-slate-400">
-                                {item.related_storyline_name || item.point_type}
-                              </div>
-                            </div>
-                            <Tag color="purple" className="mr-0">
-                              张力 {item.tension_level}
-                            </Tag>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <Empty description="暂无故事资产" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
-
+                <ScrollTabPane className="space-y-4">
                   <PanelCard title="事实与伏笔">
                     <div className="space-y-4">
                       <div>
@@ -1090,14 +860,105 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       </div>
                     </div>
                   </PanelCard>
-                </div>
+
+                  <PanelCard title="知识图谱">
+                    {graphProjects.length || graphInspirations.length ? (
+                      <InsightGraph projects={graphProjects} inspirations={graphInspirations} />
+                    ) : (
+                      <Empty description="暂无图谱数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+                </ScrollTabPane>
               ),
             },
             {
               key: 'quality',
-              label: '角色锚点',
+              label: '质量守护',
               children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                <ScrollTabPane className="space-y-4">
+                  {chapter ? (
+                    <PanelCard title="审阅定稿">
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Tag color={reviewStatusDraft === 'approved' ? 'green' : reviewStatusDraft === 'revise' ? 'orange' : 'default'} className="mr-0">
+                            {reviewStatusDraft === 'approved' ? '已定稿' : reviewStatusDraft === 'revise' ? '需修订' : '待阅'}
+                          </Tag>
+                          <Tag color={estimatedReviewModificationRate >= 15 ? 'blue' : 'red'} className="mr-0">
+                            修改率 {estimatedReviewModificationRate}%
+                          </Tag>
+                          {currentChapterReview?.reviewer_username ? (
+                            <Tag color="cyan" className="mr-0">
+                              {currentChapterReview.reviewer_username}
+                            </Tag>
+                          ) : null}
+                        </div>
+
+                        <Segmented
+                          block
+                          value={reviewStatusDraft}
+                          onChange={(value) => setReviewStatusDraft(value as 'pending' | 'approved' | 'revise')}
+                          options={[
+                            { label: '待阅', value: 'pending' },
+                            { label: '已定稿', value: 'approved' },
+                            { label: '需修订', value: 'revise' },
+                          ]}
+                        />
+
+                        <div>
+                          <div className="mb-2 text-xs text-slate-400">审阅意见</div>
+                          <Input.TextArea
+                            value={reviewNotesDraft}
+                            onChange={(event) => setReviewNotesDraft(event.target.value)}
+                            rows={8}
+                            placeholder="记录人工审稿结论、问题位置和修改建议。"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            onClick={() => setReviewNotesDraft(aiReviewDraft || reviewNotesDraft)}
+                            disabled={!aiReviewDraft}
+                          >
+                            写入 AI 建议
+                          </Button>
+                          <Button
+                            onClick={handleGenerateAiReview}
+                            loading={generatingReview}
+                          >
+                            生成 AI 审读建议
+                          </Button>
+                          <Button
+                            type="primary"
+                            onClick={handleSaveReview}
+                            loading={savingReview}
+                          >
+                            保存审阅
+                          </Button>
+                        </div>
+
+                        {aiReviewDraft ? (
+                          <div className="space-y-3 border-t border-slate-100 pt-4 text-sm">
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3 leading-6 text-slate-700 whitespace-pre-wrap">
+                              {aiReviewDraft}
+                            </div>
+                            <div>
+                              <div className="mb-2 text-xs text-slate-400">动作清单</div>
+                              <div className="min-w-0 flex flex-wrap gap-2">
+                                {aiActionItemsDraft.length
+                                  ? aiActionItemsDraft.map((item, index) => (
+                                    <Tag key={`${item}-${index}`} color="blue" className="mr-0 whitespace-normal break-words">
+                                      {item}
+                                    </Tag>
+                                  ))
+                                  : <span className="text-slate-300">暂无动作建议</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </PanelCard>
+                  ) : null}
+
                   <PanelCard title="连续性警报">
                     {workbenchHighlights?.continuity_alerts?.length ? (
                       <div className="space-y-3">
@@ -1165,6 +1026,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       </div>
 
                       <div>
+                        <div className="text-xs text-slate-400">风险结论</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterConsistencyRisks.length
+                            ? chapterConsistencyRisks.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="orange" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无明显风险</span>}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">检查实体</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterCheckedEntities.length
+                            ? chapterCheckedEntities.map((item) => (
+                              <Tag key={item} color="blue" className="mr-0 whitespace-normal break-words">{item}</Tag>
+                            ))
+                            : <span className="text-slate-300">暂无实体检查记录</span>}
+                        </div>
+                      </div>
+
+                      <div>
                         <div className="text-xs text-slate-400">待优先回收</div>
                         <div className="mt-2 min-w-0 flex flex-wrap gap-2">
                           {workbenchHighlights?.due_foreshadow_items?.length
@@ -1176,62 +1061,103 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             : <span className="text-slate-300">暂无紧迫伏笔</span>}
                         </div>
                       </div>
-                    </div>
-                  </PanelCard>
-                </div>
-              ),
-            },
-            {
-              key: 'graph',
-              label: '伏笔账本',
-              children: (
-                <div className="space-y-4 overflow-y-auto overflow-x-hidden pr-1 pb-4" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
-                  <PanelCard title="工作焦点">
-                    <div className="space-y-3 text-sm">
+
                       <div>
-                        <div className="text-xs text-slate-400">推荐焦点</div>
-                        <div className="mt-1 font-medium text-slate-800">
-                          {workbenchHighlights?.recommended_focus || '围绕当前主线推进章节。'}
+                        <div className="text-xs text-slate-400">质量问题</div>
+                        <div className="mt-2 space-y-2">
+                          {chapterQualityIssues.length ? chapterQualityIssues.map((item, index) => (
+                            <div key={`${item.code}-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Tag color={item.severity === 'high' ? 'red' : item.severity === 'medium' ? 'orange' : 'default'} className="mr-0">
+                                  {item.severity}
+                                </Tag>
+                                <div className="font-medium text-slate-800">{item.message}</div>
+                              </div>
+                              {item.suggestion ? (
+                                <div className="mt-2 text-xs leading-5 text-slate-500">{item.suggestion}</div>
+                              ) : null}
+                            </div>
+                          )) : <div className="text-slate-300">暂无结构化质量问题</div>}
                         </div>
                       </div>
-                      {workbenchHighlights?.focus_card?.must_keep?.length ? (
-                        <div>
-                          <div className="text-xs text-slate-400">必须保持</div>
-                          <div className="mt-2 min-w-0 flex flex-wrap gap-2">
-                            {workbenchHighlights.focus_card.must_keep.map((item) => (
-                              <Tag key={item} color="blue" className="mr-0 whitespace-normal break-words">{item}</Tag>
-                            ))}
-                          </div>
+
+                      <div>
+                        <div className="text-xs text-slate-400">建议先改</div>
+                        <div className="mt-2 min-w-0 flex flex-wrap gap-2">
+                          {chapterRepairActions.length
+                            ? chapterRepairActions.map((item, index) => (
+                              <Tag key={`${item}-${index}`} color="red" className="mr-0 whitespace-normal break-words">
+                                {item}
+                              </Tag>
+                            ))
+                            : <span className="text-slate-300">暂无修订动作</span>}
                         </div>
-                      ) : null}
-                      {workbenchHighlights?.nearest_plot_point && (
-                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                          <div className="font-medium text-slate-800">
-                            第 {workbenchHighlights.nearest_plot_point.chapter_number} 章情节点
-                          </div>
-                          <div className="mt-2 text-sm leading-6 text-slate-600">
-                            {workbenchHighlights.nearest_plot_point.description}
-                          </div>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </PanelCard>
-
-                  <PanelCard title="知识图谱">
-                    {graphProjects.length || graphInspirations.length ? (
-                      <InsightGraph projects={graphProjects} inspirations={graphInspirations} />
-                    ) : (
-                      <Empty description="暂无图谱数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    )}
-                  </PanelCard>
-                </div>
+                </ScrollTabPane>
               ),
             },
             {
               key: 'pulse',
-              label: '项目脉冲',
+              label: '故事演进',
               children: (
-                <div className="overflow-y-auto overflow-x-hidden pr-1 pb-4" style={scrollPaneStyle}>
+                <ScrollTabPane className="space-y-4">
+                  <PanelCard title="当前主线">
+                    {workbenchHighlights?.active_storyline ? (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium text-slate-800">
+                            {workbenchHighlights.active_storyline.name}
+                          </div>
+                          <Tag color={workbenchHighlights.active_storyline.status === 'active' ? 'green' : 'default'}>
+                            {workbenchHighlights.active_storyline.status}
+                          </Tag>
+                        </div>
+                        <div className="mt-2 text-sm leading-6 text-slate-600">
+                          {workbenchHighlights.active_storyline.description || '暂无描述'}
+                        </div>
+                      </div>
+                    ) : (
+                      <Empty description="暂无主线信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
+                  <PanelCard title="故事线与情节点">
+                    {storylines.length || plotArcPoints.length ? (
+                      <div className="space-y-3">
+                        {storylines.slice(0, 4).map((item) => (
+                          <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-medium text-slate-800">{item.name}</div>
+                              <Tag color={item.status === 'active' ? 'green' : 'default'} className="mr-0">
+                                {item.status}
+                              </Tag>
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">{item.description || '暂无描述'}</div>
+                          </div>
+                        ))}
+                        {plotArcPoints.slice(0, 6).map((item) => (
+                          <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 px-4 py-3">
+                            <div>
+                              <div className="text-sm font-medium text-slate-800">
+                                第 {item.chapter_number} 章 · {item.description}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-400">
+                                {item.related_storyline_name || item.point_type}
+                              </div>
+                            </div>
+                            <Tag color="purple" className="mr-0">
+                              张力 {item.tension_level}
+                            </Tag>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无故事资产" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </PanelCard>
+
                   {aggregatedStats && (
                     <PanelCard title="总进度">
                       <div className="space-y-3">
@@ -1342,7 +1268,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       </div>
                     </PanelCard>
                   ) : null}
-                </div>
+                </ScrollTabPane>
               ),
             },
           ]}
