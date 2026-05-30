@@ -378,33 +378,6 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     ];
   }, [nextChapterNumber, workbenchHighlights, workflowGate]);
 
-  const secondarySurfaceCards = useMemo(() => ([
-    {
-      key: 'project',
-      label: '当前项目',
-      value: displayTitle,
-      detail: selectedNovel?.genre || '未分类',
-    },
-    {
-      key: 'chapter',
-      label: '当前章节',
-      value: selectedChapter ? `第 ${selectedChapter.chapter_number} 章` : `第 ${nextChapterNumber} 章`,
-      detail: selectedChapter?.title || '当前未锁定具体章节',
-    },
-    {
-      key: 'workflow',
-      label: '工作流',
-      value: workflowGate ? formatWorkflowStatus(workflowGate.status) : '待判定',
-      detail: workflowGate?.summary || `审阅状态：${selectedReviewLabel}`,
-    },
-  ]), [
-    displayTitle,
-    nextChapterNumber,
-    selectedChapter,
-    selectedNovel?.genre,
-    selectedReviewLabel,
-    workflowGate,
-  ]);
   const dashboardPulse = useMemo(() => {
     const latestChapters = [...selectedChapters]
       .sort((a, b) => (b.chapter_number || 0) - (a.chapter_number || 0))
