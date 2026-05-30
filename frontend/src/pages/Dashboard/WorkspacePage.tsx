@@ -554,6 +554,75 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       className="min-w-0 overflow-y-auto rounded-[var(--app-radius-shell)] border border-[var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)]"
     >
       <div className="space-y-4">
+        {/* Hero section — moved from header */}
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(18rem,30rem)]">
+          <section className="rounded-[var(--app-radius-shell)] border border-[var(--app-border)] bg-[color:var(--app-surface)] px-5 py-4 shadow-[var(--app-shadow-sm)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tag color="blue" className="mr-0">{selectedNovel?.genre || '未分类'}</Tag>
+                  {workbenchHighlights?.active_storyline?.name ? (
+                    <Tag color="cyan" className="mr-0">{workbenchHighlights.active_storyline.name}</Tag>
+                  ) : null}
+                  {workflowGate ? (
+                    <Tag
+                      color={workflowGate.status === 'blocked' ? 'red' : workflowGate.status === 'warning' ? 'orange' : 'green'}
+                      className="mr-0"
+                    >
+                      工作流 {formatWorkflowStatus(workflowGate.status)}
+                    </Tag>
+                  ) : null}
+                </div>
+                <h1 className="mt-3 text-[1.5rem] font-semibold tracking-[-0.025em] text-[color:var(--app-text-primary)]">
+                  {displayTitle}
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-[color:var(--app-text-muted)]">
+                  {heroDescription}
+                </p>
+              </div>
+              <div className="grid min-w-[14rem] gap-2 sm:grid-cols-2 lg:w-[16rem] lg:grid-cols-1">
+                <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--app-text-muted)]">当前章节</div>
+                  <div className="mt-1 text-base font-semibold text-[color:var(--app-text-primary)]">
+                    {selectedChapter ? `第 ${selectedChapter.chapter_number} 章` : `第 ${nextChapterNumber} 章`}
+                  </div>
+                  <div className="mt-1 text-xs text-[color:var(--app-text-muted)]">
+                    {selectedChapter?.title || '当前未锁定具体章节'}
+                  </div>
+                </div>
+                <div className="rounded-[16px] border border-[var(--app-border)] bg-[color:var(--app-shell)] px-3 py-3">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-[color:var(--app-text-muted)]">
+                    <span>总进度</span>
+                    <span>{aggregatedStats.completionRate}%</span>
+                  </div>
+                  <Progress percent={aggregatedStats.completionRate} showInfo={false} strokeColor="#2563eb" trailColor="#e5e7eb" />
+                  <div className="mt-2 text-xs text-[color:var(--app-text-muted)]">
+                    审阅状态：{selectedReviewLabel}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
+            {focusSignals.slice(0, 4).map((item) => (
+              <div
+                key={item.key}
+                className={`rounded-[16px] border px-4 py-3 shadow-[var(--app-shadow-sm)] ${toneClassMap[item.tone]}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--app-text-muted)]">{item.title}</div>
+                    <div className="mt-1 text-sm font-semibold text-[color:var(--app-text-primary)]">{item.value}</div>
+                  </div>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[color:var(--app-surface-subtle)] text-[color:var(--app-text-secondary)]">
+                    {item.icon}
+                  </div>
+                </div>
+                <div className="mt-2 text-xs leading-5 text-[color:var(--app-text-muted)]">{item.detail}</div>
+              </div>
+            ))}
+          </section>
+        </div>
         <section className="rounded-[18px] border border-[var(--app-border)] bg-[color:var(--app-shell)] p-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--app-text-muted)]">项目脉冲</div>
           <div className="mt-2 text-lg font-semibold text-[color:var(--app-text-primary)]">
